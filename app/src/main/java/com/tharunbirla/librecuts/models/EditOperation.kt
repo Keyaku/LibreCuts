@@ -107,6 +107,20 @@ sealed class EditOperation : Serializable {
             require(startMs >= 0) { "Start time cannot be negative" }
         }
     }
+
+    /**
+     * Image overlay operation: Adds an image to the video at specified position, size, and rotation angle.
+     * Uses FFmpeg's overlay filter.
+     */
+    data class AddImageOverlay(
+        val imageUri: Uri,
+        val relativeX: Float,
+        val relativeY: Float,
+        val relativeWidth: Float,
+        val relativeHeight: Float,
+        val rotationAngle: Float,
+        val id: String = System.nanoTime().toString()
+    ) : EditOperation()
 }
 
 /**

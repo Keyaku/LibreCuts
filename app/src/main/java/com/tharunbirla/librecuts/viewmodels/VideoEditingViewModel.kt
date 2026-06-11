@@ -108,6 +108,26 @@ class VideoEditingViewModel : ViewModel() {
         ))
     }
 
+    fun addImageOverlayOperation(
+        imageUri: Uri,
+        relativeX: Float,
+        relativeY: Float,
+        relativeWidth: Float,
+        relativeHeight: Float,
+        rotationAngle: Float
+    ) {
+        addOperation(
+            EditOperation.AddImageOverlay(
+                imageUri = imageUri,
+                relativeX = relativeX,
+                relativeY = relativeY,
+                relativeWidth = relativeWidth,
+                relativeHeight = relativeHeight,
+                rotationAngle = rotationAngle
+            )
+        )
+    }
+
     private fun addOperation(operation: EditOperation) {
         viewModelScope.launch {
             _project.update { current ->
@@ -191,6 +211,7 @@ class VideoEditingViewModel : ViewModel() {
                                 is EditOperation.Merge -> op.id == operationId
                                 is EditOperation.MuteAudio -> op.id == operationId
                                 is EditOperation.AddBackgroundAudio -> op.id == operationId
+                                is EditOperation.AddImageOverlay -> op.id == operationId
                             }
                         }
                     )
@@ -256,23 +277,52 @@ class VideoEditingViewModel : ViewModel() {
     private fun buildVideoFilterStages(
         operations: List<EditOperation>,
         fontFilePath: String?,
-        inputLabel: String = "[0:v]"
+        inputLabel: String = "[0:v]",
+        imageInputIndices: List<Pair<Int, EditOperation.AddImageOverlay>> = emptyList()
     ): Pair<List<String>, String> {
         val stages = mutableListOf<String>()
         var currentLabel = inputLabel
         var stageIndex = 0
 
         for (op in operations) {
-            val filterExpr: String? = when (op) {
-                is EditOperation.Crop -> buildCropFilterExpr(op.aspectRatio)
-                is EditOperation.AddText -> buildDrawtextExpr(op, fontFilePath)
-                else -> null
-            }
-            if (filterExpr != null) {
-                val nextLabel = "[v$stageIndex]"
-                stages.add("$currentLabel$filterExpr$nextLabel")
-                currentLabel = nextLabel
-                stageIndex++
+            when (op) {
+                is EditOperation.Crop -> {
+                    val filterExpr = buildCropFilterExpr(op.aspectRatio)
+                    if (filterExpr != null) {
+                        val nextLabel = "[v$stageIndex]"
+                        stages.add("$currentLabel$filterExpr$nextLabel")
+                        currentLabel = nextLabel
+                        stageIndex++
+                    }
+                }
+                is EditOperation.AddText -> {
+                    val filterExpr = buildDrawtextExpr(op, fontFilePath)
+                    val nextLabel = "[v$stageIndex]"
+                    stages.add("$currentLabel$filterExpr$nextLabel")
+                    currentLabel = nextLabel
+                    stageIndex++
+                }
+                is EditOperation.AddImageOverlay -> {
+                    val imageInputIndex = imageInputIndices.find { it.second.id == op.id }?.first
+                    if (imageInputIndex != null) {
+                        val radians = op.rotationAngle * Math.PI / 180.0
+                        val scaledImgLabel = "[scaled_img_$stageIndex]"
+                        val refVidLabel = "[ref_vid_$stageIndex]"
+                        val rotatedImgLabel = "[rotated_img_$stageIndex]"
+                        val nextLabel = "[v$stageIndex]"
+
+                        // Scale the image relative to reference video
+                        stages.add("[$imageInputIndex:v]$currentLabel scale2ref=w=main_w*${op.relativeWidth}:h=main_h*${op.relativeHeight} $scaledImgLabel $refVidLabel")
+                        // Rotate image (c=none preserves transparent background)
+                        stages.add("${scaledImgLabel}rotate=$radians:c=none $rotatedImgLabel")
+                        // Overlay image on the reference video
+                        stages.add("$refVidLabel$rotatedImgLabel overlay=x=(W*${op.relativeX})-(w/2):y=(H*${op.relativeY})-(h/2) $nextLabel")
+
+                        currentLabel = nextLabel
+                        stageIndex++
+                    }
+                }
+                else -> {}
             }
         }
 
@@ -322,31 +372,64 @@ class VideoEditingViewModel : ViewModel() {
         val trimOp = operations.filterIsInstance<EditOperation.Trim>().lastOrNull()
         val audioOps = operations.filterIsInstance<EditOperation.AddBackgroundAudio>()
         val audioMuted = operations.any { it is EditOperation.MuteAudio }
-        val videoOps = nonMergeOps.filter { it is EditOperation.Crop || it is EditOperation.AddText }
+        val videoOps = nonMergeOps.filter { it is EditOperation.Crop || it is EditOperation.AddText || it is EditOperation.AddImageOverlay }
+        val imageOps = operations.filterIsInstance<EditOperation.AddImageOverlay>()
 
-        // ── MERGE PATH: apply source ops, normalize all inputs, concat ────────
+        // ── Unified Input Indexing ────────────────────────────────────────────
+        val cmd = StringBuilder()
+        var inputIndex = 0
+
+        // 1. Source Video Input (Index 0)
+        if (trimOp != null && mergeOp == null) {
+            val startSecs = trimOp.startMs / 1000.0
+            val duration = (trimOp.endMs - trimOp.startMs) / 1000.0
+            cmd.append("-ss $startSecs -i \"$sourceFilePath\" -to $duration")
+        } else {
+            cmd.append("-i \"$sourceFilePath\"")
+        }
+        inputIndex++
+
+        // 2. Merge Video Inputs
+        val mergeVideoIndices = mutableListOf<Int>()
         if (mergeOp != null) {
-            val inputCount = 1 + mergeOp.videoUris.size
-            val cmd = StringBuilder()
-
-            // Add all inputs
-            if (trimOp != null) {
-                val startSecs = trimOp.startMs / 1000.0
-                val duration = (trimOp.endMs - trimOp.startMs) / 1000.0
-                cmd.append("-ss $startSecs -i \"$sourceFilePath\" -to $duration")
-            } else {
-                cmd.append("-i \"$sourceFilePath\"")
-            }
             for (videoUri in mergeOp.videoUris) {
                 val videoPath = videoUri.path ?: videoUri.toString()
                 cmd.append(" -i \"$videoPath\"")
+                mergeVideoIndices.add(inputIndex)
+                inputIndex++
             }
+        }
 
-            // Build filter_complex
+        // 3. Audio Inputs
+        val audioInputIndices = mutableListOf<Pair<Int, EditOperation.AddBackgroundAudio>>()
+        for (audioOp in audioOps) {
+            val audioPath = audioOp.audioUri.path ?: audioOp.audioUri.toString()
+            cmd.append(" -i \"$audioPath\"")
+            audioInputIndices.add(Pair(inputIndex, audioOp))
+            inputIndex++
+        }
+
+        // 4. Image Overlay Inputs
+        val imageInputIndices = mutableListOf<Pair<Int, EditOperation.AddImageOverlay>>()
+        for (imageOp in imageOps) {
+            val imagePath = imageOp.imageUri.path ?: imageOp.imageUri.toString()
+            cmd.append(" -i \"$imagePath\"")
+            imageInputIndices.add(Pair(inputIndex, imageOp))
+            inputIndex++
+        }
+
+        // ── MERGE PATH ────────────────────────────────────────────────────────
+        if (mergeOp != null) {
+            val inputCount = 1 + mergeOp.videoUris.size
             val filterParts = mutableListOf<String>()
 
-            // Apply video filters (crop, text) to source [0:v]
-            val (sourceVideoStages, sourceVideoLabel) = buildVideoFilterStages(videoOps, fontFilePath, "[0:v]")
+            // Apply video filters (crop, text, image overlays) to source [0:v]
+            val (sourceVideoStages, sourceVideoLabel) = buildVideoFilterStages(
+                operations = videoOps,
+                fontFilePath = fontFilePath,
+                inputLabel = "[0:v]",
+                imageInputIndices = imageInputIndices
+            )
             filterParts.addAll(sourceVideoStages)
 
             // Normalize source video
@@ -376,33 +459,16 @@ class VideoEditingViewModel : ViewModel() {
             return finalCommand
         }
 
-        // ── NON-MERGE PATH: build filter_complex with stream labels ──────────
-        val cmd = StringBuilder()
-
-        // Input with optional trim
-        if (trimOp != null) {
-            val startSecs = trimOp.startMs / 1000.0
-            val duration = (trimOp.endMs - trimOp.startMs) / 1000.0
-            cmd.append("-ss $startSecs -i \"$sourceFilePath\" -to $duration")
-        } else {
-            cmd.append("-i \"$sourceFilePath\"")
-        }
-
-        // Additional audio inputs
-        var audioInputIndex = 1
-        val audioInputIndices = mutableListOf<Pair<Int, EditOperation.AddBackgroundAudio>>()
-        for (audioOp in audioOps) {
-            val audioPath = audioOp.audioUri.path ?: audioOp.audioUri.toString()
-            cmd.append(" -i \"$audioPath\"")
-            audioInputIndices.add(Pair(audioInputIndex, audioOp))
-            audioInputIndex++
-        }
-
-        // Build the filter_complex graph
+        // ── NON-MERGE PATH ────────────────────────────────────────────────────
         val filterComplexParts = mutableListOf<String>()
 
-        // ── Video filter stages (crop, text) with stream labels ──
-        val (videoStages, finalVideoLabel) = buildVideoFilterStages(videoOps, fontFilePath)
+        // ── Video filter stages (crop, text, image overlays) ──
+        val (videoStages, finalVideoLabel) = buildVideoFilterStages(
+            operations = videoOps,
+            fontFilePath = fontFilePath,
+            inputLabel = "[0:v]",
+            imageInputIndices = imageInputIndices
+        )
         filterComplexParts.addAll(videoStages)
 
         // ── Audio filter stages (multi-track adelay + volume mixing) ──
@@ -410,7 +476,6 @@ class VideoEditingViewModel : ViewModel() {
         if (audioMuted) {
             // No audio output — will use -an flag
         } else if (audioInputIndices.isNotEmpty()) {
-            // Build per-track adelay + volume filters
             val mixInputLabels = mutableListOf<String>()
 
             for ((idx, pair) in audioInputIndices.withIndex()) {
@@ -444,15 +509,12 @@ class VideoEditingViewModel : ViewModel() {
 
             // Mix original audio with all background tracks
             if (hasAudio && !audioInputIndices.any { it.second.removeOriginalAudio }) {
-                // Keep original audio — mix all together
                 val allInputs = "[0:a]" + mixInputLabels.joinToString("")
                 val totalInputs = 1 + mixInputLabels.size
                 filterComplexParts.add("${allInputs}amix=inputs=$totalInputs:duration=longest[outa]")
                 finalAudioLabel = "[outa]"
             } else {
-                // Replace original audio OR source has no audio — mix only background tracks
                 if (mixInputLabels.size == 1) {
-                    // Single replacement track: use aformat instead of amix
                     val singleLabel = mixInputLabels[0]
                     filterComplexParts.add("${singleLabel}aformat=sample_rates=44100:channel_layouts=stereo[outa]")
                     finalAudioLabel = "[outa]"
@@ -471,7 +533,6 @@ class VideoEditingViewModel : ViewModel() {
         if (hasVideoFilters || hasAudioFilters) {
             cmd.append(" -filter_complex \"${filterComplexParts.joinToString(";")}\"")
 
-            // Explicit stream mapping when using filter_complex
             if (hasVideoFilters) {
                 cmd.append(" -map \"$finalVideoLabel\"")
             } else {

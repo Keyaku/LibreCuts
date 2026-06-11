@@ -130,6 +130,17 @@
                 android:layout_height="match_parent"
                 android:visibility="gone" />
 
+            <com.tharunbirla.librecuts.customviews.ImageOverlayView
+                android:id="@+id/imageOverlayView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"/>
+
+            <com.tharunbirla.librecuts.customviews.DraggableImageOverlayView
+                android:id="@+id/draggableImageOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
             <TextView
                 android:id="@+id/tvPreviewBadge"
                 android:layout_width="wrap_content"
@@ -229,6 +240,14 @@
             android:layout_height="wrap_content"
             android:visibility="gone" />
 
+        <!-- Image Editing Toolbar (inline mode, hidden by default) -->
+        <include
+            android:id="@+id/imageEditingToolbar"
+            layout="@layout/image_editing_toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
         <LinearLayout
             android:id="@+id/editingControlsWrapper"
             android:layout_width="match_parent"
@@ -278,6 +297,27 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Text"
+                    android:textSize="11sp"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnImageOverlay"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_image_24"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Image"
                     android:textSize="11sp"
                     android:textColor="@color/toolTextInactive"/>
             </LinearLayout>

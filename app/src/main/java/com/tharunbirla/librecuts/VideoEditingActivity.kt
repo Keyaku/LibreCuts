@@ -39,8 +39,12 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.RangeSlider
 import com.google.android.material.textfield.TextInputEditText
+import android.graphics.BitmapFactory
+import com.google.android.material.slider.Slider
 import com.tharunbirla.librecuts.customviews.CustomVideoSeeker
 import com.tharunbirla.librecuts.customviews.DraggableTextOverlayView
+import com.tharunbirla.librecuts.customviews.DraggableImageOverlayView
+import com.tharunbirla.librecuts.customviews.ImageOverlayView
 import com.tharunbirla.librecuts.models.EditOperation
 import com.tharunbirla.librecuts.models.TextPosition
 import kotlinx.coroutines.Job
@@ -94,6 +98,12 @@ class VideoEditingActivity : AppCompatActivity() {
     private var draggableTextOverlay: DraggableTextOverlayView? = null
     private var textEditingToolbar: View? = null
     private var isTextEditingActive = false
+
+    // Inline image overlay editing state
+    private var draggableImageOverlay: DraggableImageOverlayView? = null
+    private var imageOverlayView: ImageOverlayView? = null
+    private var imageEditingToolbar: View? = null
+    private var isImageEditingActive = false
 
     // Segmented preview state
     private var previewJob: Job? = null
@@ -225,6 +235,13 @@ class VideoEditingActivity : AppCompatActivity() {
             null
         }
 
+        imageOverlayView = try {
+            findViewById(R.id.imageOverlayView)
+        } catch (e: Exception) {
+            Log.w(TAG, "ImageOverlayView not found in layout: ${e.message}")
+            null
+        }
+
         // Inline text editing components
         draggableTextOverlay = try {
             findViewById<DraggableTextOverlayView>(R.id.draggableTextOverlay)?.also { overlay ->
@@ -286,6 +303,47 @@ class VideoEditingActivity : AppCompatActivity() {
             null
         }
 
+        draggableImageOverlay = try {
+            findViewById<DraggableImageOverlayView>(R.id.draggableImageOverlay)?.also { overlay ->
+                overlay.onImageCommitted = { uri, relX, relY, relW, relH, rotationAngle ->
+                    viewModel.addImageOverlayOperation(
+                        imageUri = uri,
+                        relativeX = relX,
+                        relativeY = relY,
+                        relativeWidth = relW,
+                        relativeHeight = relH,
+                        rotationAngle = rotationAngle
+                    )
+                    exitImageEditingMode()
+                    renderSegmentedPreview()
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "DraggableImageOverlayView not found: ${e.message}")
+            null
+        }
+
+        imageEditingToolbar = try {
+            findViewById<View>(R.id.imageEditingToolbar)?.also { toolbar ->
+                toolbar.findViewById<ImageButton>(R.id.btnImageCancel)?.setOnClickListener {
+                    draggableImageOverlay?.deactivate()
+                    exitImageEditingMode()
+                }
+                toolbar.findViewById<View>(R.id.btnImageDone)?.setOnClickListener {
+                    draggableImageOverlay?.commitImage()
+                }
+                val slider = toolbar.findViewById<Slider>(R.id.imageRotationSlider)
+                val tvValue = toolbar.findViewById<TextView>(R.id.tvImageRotationValue)
+                slider?.addOnChangeListener { _, value, _ ->
+                    tvValue?.text = "${value.toInt()}°"
+                    draggableImageOverlay?.setRotationAngle(value)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Image editing toolbar not found: ${e.message}")
+            null
+        }
+
         findViewById<ImageButton>(R.id.btnHome).setOnClickListener {
             onBackPressedDispatcher.onBackPressed()
         }
@@ -310,6 +368,10 @@ class VideoEditingActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btnText).setOnClickListener {
             setActiveToolButton(R.id.btnText)
             textAction()
+        }
+        findViewById<ImageButton>(R.id.btnImageOverlay).setOnClickListener {
+            setActiveToolButton(R.id.btnImageOverlay)
+            imageOverlayAction()
         }
         findViewById<ImageButton>(R.id.btnAudio).setOnClickListener {
             setActiveToolButton(R.id.btnAudio)
@@ -341,7 +403,7 @@ class VideoEditingActivity : AppCompatActivity() {
     }
 
     private fun setActiveToolButton(activeId: Int) {
-        val toolIds = listOf(R.id.btnTrim, R.id.btnText, R.id.btnAudio, R.id.btnCrop, R.id.btnMerge)
+        val toolIds = listOf(R.id.btnTrim, R.id.btnText, R.id.btnImageOverlay, R.id.btnAudio, R.id.btnCrop, R.id.btnMerge)
         for (id in toolIds) {
             val btn = findViewById<ImageButton>(id)
             btn.setBackgroundResource(if (id == activeId) R.drawable.tool_button_active else R.drawable.tool_button_inactive)
@@ -401,6 +463,11 @@ class VideoEditingActivity : AppCompatActivity() {
                     textOverlayView?.let { overlay ->
                         val textOps = project.operations.filterIsInstance<EditOperation.AddText>()
                         overlay.setTextOperations(textOps)
+                    }
+
+                    imageOverlayView?.let { overlay ->
+                        val imageOps = project.operations.filterIsInstance<EditOperation.AddImageOverlay>()
+                        overlay.setImageOperations(imageOps)
                     }
 
                     val cropOps = project.operations.filterIsInstance<EditOperation.Crop>()
@@ -581,6 +648,65 @@ class VideoEditingActivity : AppCompatActivity() {
         findViewById<LinearLayout>(R.id.editingControlsWrapper)?.visibility = View.VISIBLE
     }
 
+    private fun imageOverlayAction() {
+        if (isImageEditingActive) {
+            draggableImageOverlay?.commitImage()
+            return
+        }
+        openImagePicker()
+    }
+
+    private fun openImagePicker() {
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "image/*"
+            addCategory(Intent.CATEGORY_OPENABLE)
+        }
+        startActivityForResult(Intent.createChooser(intent, "Select Image"), PICK_IMAGE_REQUEST)
+    }
+
+    private fun showImageOverlayConfig(imageUri: Uri) {
+        lifecycleScope.launch {
+            val tempImageFile = withContext(Dispatchers.IO) {
+                copyContentUriToTempFile(imageUri, "overlay_image", ".png")
+            }
+            if (tempImageFile == null) {
+                Toast.makeText(this@VideoEditingActivity, "Failed to load image", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val localUri = Uri.fromFile(tempImageFile)
+            
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeFile(tempImageFile.absolutePath, options)
+            val aspect = if (options.outHeight > 0) options.outWidth.toFloat() / options.outHeight else 1.0f
+            
+            enterImageEditingMode(localUri, aspect)
+        }
+    }
+
+    private fun enterImageEditingMode(uri: Uri, aspect: Float) {
+        isImageEditingActive = true
+        draggableImageOverlay?.activate(uri, aspect)
+        imageEditingToolbar?.visibility = View.VISIBLE
+        imageEditingToolbar?.let { toolbar ->
+            val slider = toolbar.findViewById<Slider>(R.id.imageRotationSlider)
+            val tvValue = toolbar.findViewById<TextView>(R.id.tvImageRotationValue)
+            slider?.value = 0f
+            tvValue?.text = "0°"
+        }
+        findViewById<LinearLayout>(R.id.editingControlsWrapper)?.visibility = View.GONE
+        if (::player.isInitialized && player.isPlaying) {
+            player.pause()
+        }
+    }
+
+    private fun exitImageEditingMode() {
+        isImageEditingActive = false
+        imageEditingToolbar?.visibility = View.GONE
+        findViewById<LinearLayout>(R.id.editingControlsWrapper)?.visibility = View.VISIBLE
+    }
+
     private fun mergeAction() {
         openFilePickerMerge()
     }
@@ -616,6 +742,10 @@ class VideoEditingActivity : AppCompatActivity() {
         } else if (requestCode == PICK_AUDIO_REQUEST && resultCode == Activity.RESULT_OK) {
             data?.data?.let { audioUri ->
                 showAudioConfigDialog(audioUri)
+            }
+        } else if (requestCode == PICK_IMAGE_REQUEST && resultCode == Activity.RESULT_OK) {
+            data?.data?.let { imageUri ->
+                showImageOverlayConfig(imageUri)
             }
         }
     }
@@ -1062,6 +1192,8 @@ class VideoEditingActivity : AppCompatActivity() {
                         if (format != null && format.width > 0 && format.height > 0) {
                             textOverlayView?.setVideoSize(format.width, format.height)
                             draggableTextOverlay?.setVideoSize(format.width, format.height)
+                            imageOverlayView?.setVideoSize(format.width, format.height)
+                            draggableImageOverlay?.setVideoSize(format.width, format.height)
                         }
                     }
                 }
@@ -1078,6 +1210,8 @@ class VideoEditingActivity : AppCompatActivity() {
                     if (videoSize.width > 0 && videoSize.height > 0) {
                         textOverlayView?.setVideoSize(videoSize.width, videoSize.height)
                         draggableTextOverlay?.setVideoSize(videoSize.width, videoSize.height)
+                        imageOverlayView?.setVideoSize(videoSize.width, videoSize.height)
+                        draggableImageOverlay?.setVideoSize(videoSize.width, videoSize.height)
                     }
                 }
 
@@ -1443,6 +1577,7 @@ class VideoEditingActivity : AppCompatActivity() {
         previewJob?.cancel()
         extractedFrames.forEach { if (!it.isRecycled) it.recycle() }
         draggableTextOverlay?.deactivate()
+        draggableImageOverlay?.deactivate()
         previewFile?.delete()
         super.onDestroy()
         player.release()
@@ -1496,5 +1631,6 @@ class VideoEditingActivity : AppCompatActivity() {
         private const val TAG = "VideoEditingActivity"
         private const val PICK_VIDEO_REQUEST = 1
         private const val PICK_AUDIO_REQUEST = 2
+        private const val PICK_IMAGE_REQUEST = 3
     }
 }
