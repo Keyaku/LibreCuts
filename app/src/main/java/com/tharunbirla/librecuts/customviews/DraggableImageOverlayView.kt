@@ -63,7 +63,9 @@ class DraggableImageOverlayView @JvmOverloads constructor(
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             val scaleFactor = detector.scaleFactor
             relativeWidth = (relativeWidth * scaleFactor).coerceIn(0.1f, 0.9f)
-            relativeHeight = relativeWidth / imageAspectRatio
+            val videoRect = getVideoRect()
+            val videoAspect = if (videoRect.height() > 0) videoRect.width() / videoRect.height() else 1.0f
+            relativeHeight = relativeWidth * videoAspect / imageAspectRatio
             updateImageViewSizeAndPosition()
             return true
         }
@@ -152,7 +154,10 @@ class DraggableImageOverlayView @JvmOverloads constructor(
         relativeX = 0.5f
         relativeY = 0.5f
         relativeWidth = 0.3f
-        relativeHeight = 0.3f / aspect
+        
+        val videoRect = getVideoRect()
+        val videoAspect = if (videoRect.height() > 0) videoRect.width() / videoRect.height() else 1.0f
+        relativeHeight = relativeWidth * videoAspect / aspect
         rotationAngle = 0f
 
         imageView.setImageURI(uri)
@@ -294,6 +299,18 @@ class DraggableImageOverlayView @JvmOverloads constructor(
                 imageView.y + imageView.height + 4f
             )
             canvas.drawRoundRect(selectionRect, 8f, 8f, selectionPaint)
+
+            // Draw 4 corner handles
+            val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#007AFF")
+                style = Paint.Style.FILL
+            }
+            val handleRadius = 12f
+            canvas.drawCircle(selectionRect.left, selectionRect.top, handleRadius, handlePaint)
+            canvas.drawCircle(selectionRect.right, selectionRect.top, handleRadius, handlePaint)
+            canvas.drawCircle(selectionRect.left, selectionRect.bottom, handleRadius, handlePaint)
+            canvas.drawCircle(selectionRect.right, selectionRect.bottom, handleRadius, handlePaint)
+
             canvas.restore()
         }
     }

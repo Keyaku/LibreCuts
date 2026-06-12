@@ -17,14 +17,19 @@ class TrackTrimView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     var videoDurationMs: Long = 0L
+    var maxDurationMs: Long = 0L
     var startTimeMs: Long = 0L
     var endTimeMs: Long = 0L
+    var activeStartMs: Long = 0L
+    var activeEndMs: Long = 0L
 
     var onTrimChanged: ((Long, Long) -> Unit)? = null
+    var onTrimAdjusting: ((Long, Long) -> Unit)? = null
 
     var trackColor: Int = Color.parseColor("#4285F4") // Default blue
     var trackLabel: String? = null
     var isSelectedTrack: Boolean = false
+    var isMainVideoTrack: Boolean = false
     var trackIcon: android.graphics.drawable.Drawable? = null
     var trackThumbnail: android.graphics.Bitmap? = null
     var isAudioTrack: Boolean = false
@@ -38,6 +43,10 @@ class TrackTrimView @JvmOverloads constructor(
     }
 
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#252429") // solid color to mask video frames and create a shrinking effect
         style = Paint.Style.FILL
     }
     private val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -64,6 +73,32 @@ class TrackTrimView @JvmOverloads constructor(
     private var dragTarget = DragTarget.NONE
     private var lastTouchX = 0f
     private var downTouchX = 0f
+    
+    private var handleScaleAnimator: android.animation.ValueAnimator? = null
+    private var currentHandleScale = 1.0f
+
+    private var isDraggingHandle = false
+        set(value) {
+            if (field != value) {
+                field = value
+                val targetScale = if (value) 1.6f else 1.0f
+                handleScaleAnimator?.cancel()
+                handleScaleAnimator = android.animation.ValueAnimator.ofFloat(currentHandleScale, targetScale).apply {
+                    duration = 150
+                    addUpdateListener {
+                        currentHandleScale = it.animatedValue as Float
+                        invalidate()
+                    }
+                    start()
+                }
+                
+                if (value) {
+                    performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                } else {
+                    performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                }
+            }
+        }
 
     fun setRange(videoDurationMs: Long, startTimeMs: Long, endTimeMs: Long) {
         this.videoDurationMs = videoDurationMs
@@ -83,9 +118,18 @@ class TrackTrimView @JvmOverloads constructor(
         rectF.set(startX, 0f, endX, height.toFloat())
         
         // Draw track fill
-        trackPaint.color = trackColor
-        trackPaint.alpha = 200
-        canvas.drawRoundRect(rectF, 12f, 12f, trackPaint)
+        if (isMainVideoTrack) {
+            if (startX > 0f) {
+                canvas.drawRect(0f, 0f, startX, height.toFloat(), dimPaint)
+            }
+            if (endX < width) {
+                canvas.drawRect(endX, 0f, width.toFloat(), height.toFloat(), dimPaint)
+            }
+        } else {
+            trackPaint.color = trackColor
+            trackPaint.alpha = 200
+            canvas.drawRoundRect(rectF, 12f, 12f, trackPaint)
+        }
 
         // Draw Audio Wave Background
         if (isAudioTrack) {
@@ -107,14 +151,24 @@ class TrackTrimView @JvmOverloads constructor(
         }
         
         // Draw track border
-        if (isSelectedTrack) {
-            borderPaint.color = Color.WHITE
-            borderPaint.strokeWidth = 6f
-        } else {
-            borderPaint.color = Color.parseColor("#88FFFFFF")
-            borderPaint.strokeWidth = 3f
+        if (!isMainVideoTrack) {
+            if (isSelectedTrack) {
+                borderPaint.color = Color.parseColor("#FF4081") // Vibrant pink selection accent
+                borderPaint.strokeWidth = 6f
+                canvas.drawRoundRect(rectF, 12f, 12f, borderPaint)
+                
+                // Draw a subtle 10% opacity pink overlay inside the track
+                val selectionOverlayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.parseColor("#1AFF4081")
+                    style = Paint.Style.FILL
+                }
+                canvas.drawRoundRect(rectF, 12f, 12f, selectionOverlayPaint)
+            } else {
+                borderPaint.color = Color.parseColor("#33FFFFFF") // Subtle 20% opacity white outline
+                borderPaint.strokeWidth = 2f
+                canvas.drawRoundRect(rectF, 12f, 12f, borderPaint)
+            }
         }
-        canvas.drawRoundRect(rectF, 12f, 12f, borderPaint)
 
         // Draw Icon, Thumbnail, and Label if available
         var textStartX = startX + handleWidth + 16f
@@ -153,9 +207,10 @@ class TrackTrimView @JvmOverloads constructor(
         }
 
         // Draw left handle
-        canvas.drawRect(startX, 0f, startX + handleWidth, height.toFloat(), handlePaint)
+        val currentHandleWidth = handleWidth * currentHandleScale
+        canvas.drawRect(startX, 0f, startX + currentHandleWidth, height.toFloat(), handlePaint)
         // Draw right handle
-        canvas.drawRect(endX - handleWidth, 0f, endX, height.toFloat(), handlePaint)
+        canvas.drawRect(endX - currentHandleWidth, 0f, endX, height.toFloat(), handlePaint)
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -176,6 +231,7 @@ class TrackTrimView @JvmOverloads constructor(
                     event.x > startX + handleWidth && event.x < endX - handleWidth -> DragTarget.CENTER
                     else -> DragTarget.NONE
                 }
+                isDraggingHandle = (dragTarget == DragTarget.LEFT || dragTarget == DragTarget.RIGHT)
                 if (dragTarget != DragTarget.NONE) {
                     parent?.requestDisallowInterceptTouchEvent(true)
                 }
@@ -187,14 +243,24 @@ class TrackTrimView @JvmOverloads constructor(
 
                 when (dragTarget) {
                     DragTarget.LEFT -> {
-                        startTimeMs = (startTimeMs + dtMs).coerceIn(0L, endTimeMs - 100L) // 100ms min duration
+                        val minStart = if (!isMainVideoTrack) activeStartMs else 0L
+                        val maxStart = if (!isMainVideoTrack) activeEndMs - 100L else endTimeMs - 100L
+                        startTimeMs = (startTimeMs + dtMs).coerceIn(minStart, maxStart.coerceAtLeast(minStart))
                     }
                     DragTarget.RIGHT -> {
-                        endTimeMs = (endTimeMs + dtMs).coerceIn(startTimeMs + 100L, videoDurationMs)
+                        val minEnd = if (!isMainVideoTrack) activeStartMs + 100L else startTimeMs + 100L
+                        val limit = if (isMainVideoTrack) {
+                            if (maxDurationMs > 0L) maxDurationMs else videoDurationMs
+                        } else {
+                            activeEndMs
+                        }
+                        endTimeMs = (endTimeMs + dtMs).coerceIn(minEnd, limit.coerceAtLeast(minEnd))
                     }
                     DragTarget.CENTER -> {
                         val duration = endTimeMs - startTimeMs
-                        startTimeMs = (startTimeMs + dtMs).coerceIn(0L, videoDurationMs - duration)
+                        val minCenterStart = if (!isMainVideoTrack) activeStartMs else 0L
+                        val maxCenterStart = if (!isMainVideoTrack) activeEndMs - duration else videoDurationMs - duration
+                        startTimeMs = (startTimeMs + dtMs).coerceIn(minCenterStart, maxCenterStart.coerceAtLeast(minCenterStart))
                         endTimeMs = startTimeMs + duration
                     }
                     DragTarget.NONE -> {}
@@ -202,6 +268,7 @@ class TrackTrimView @JvmOverloads constructor(
                 
                 lastTouchX = event.x
                 invalidate()
+                onTrimAdjusting?.invoke(startTimeMs, endTimeMs)
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -213,6 +280,7 @@ class TrackTrimView @JvmOverloads constructor(
                         onTrimChanged?.invoke(startTimeMs, endTimeMs)
                     }
                     dragTarget = DragTarget.NONE
+                    isDraggingHandle = false
                     parent?.requestDisallowInterceptTouchEvent(false)
                 }
                 return true

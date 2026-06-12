@@ -38,11 +38,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Declare VideoEditingActivity -->
         <activity
             android:name=".VideoEditingActivity"
             android:exported="true"
-            android:theme="@style/Editor" />
+            android:theme="@style/Editor"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ErrorDisplayActivity"

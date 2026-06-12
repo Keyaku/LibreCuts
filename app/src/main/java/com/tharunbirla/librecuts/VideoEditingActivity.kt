@@ -17,6 +17,7 @@ import android.provider.MediaStore
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.view.Gravity
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.FrameLayout
@@ -26,6 +27,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -70,17 +72,21 @@ class VideoEditingActivity : AppCompatActivity() {
     private lateinit var frameRecyclerView: RecyclerView
     private lateinit var textTrackContainer: LinearLayout
     private lateinit var imageTrackContainer: LinearLayout
+    private lateinit var playerContainer: FrameLayout
     private lateinit var audioTrackContainer: LinearLayout
 
     private fun Int.dpToPx(): Int {
         return (this * resources.displayMetrics.density).toInt()
     }
     private lateinit var customVideoSeeker: CustomVideoSeeker
+    private lateinit var timeRulerView: com.tharunbirla.librecuts.customviews.TimeRulerView
     private lateinit var loadingScreen: View
     private lateinit var exportScreen: View
+    private lateinit var previewLoadingOverlay: View
     private lateinit var lottieAnimationView: LottieAnimationView
     private lateinit var btnUndo: ImageButton
     private lateinit var btnRedo: ImageButton
+    private lateinit var btnPreview: ImageButton
     private lateinit var layoutSaveSplit: View
     private lateinit var btnSaveText: View
     private lateinit var btnSaveDropdown: View
@@ -95,6 +101,7 @@ class VideoEditingActivity : AppCompatActivity() {
     private var videoFileName: String = ""
     private lateinit var tempInputFile: File
     private var isVideoLoaded = false
+    private var isVideoFramesExtracted = false
 
     // ── FONT: cached absolute path to Roboto-Regular.ttf in cacheDir ──────────
     // Populated in onCreate via ffmpegEngine.copyFontToCache().
@@ -118,6 +125,7 @@ class VideoEditingActivity : AppCompatActivity() {
     // Segmented preview state
     private var previewJob: Job? = null
     private var isShowingPreview = false
+    private var isRenderingPreview = false
     private var previewFile: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -134,6 +142,13 @@ class VideoEditingActivity : AppCompatActivity() {
         // Initialize ViewModel and engine
         viewModel = ViewModelProvider(this).get(VideoEditingViewModel::class.java)
         ffmpegEngine = FFmpegRenderEngine(this)
+
+        // Register back-press callback to prompt for quit confirmation
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                showQuitConfirmationDialog()
+            }
+        })
 
         // ── Copy the bundled font from assets → cacheDir so FFmpeg can read it ──
         // The font must exist at:  app/src/main/assets/fonts/Roboto-Regular.ttf
@@ -160,12 +175,15 @@ class VideoEditingActivity : AppCompatActivity() {
                     player.pause()
                     btnPlayPause.setImageResource(R.drawable.ic_play_24)
                 } else {
-                    // CHECK: If the player is at the end, seek to the start first
-                    if (player.currentPosition >= player.duration) {
-                        player.seekTo(0)
-                        // Also update your custom UI immediately
-                        customVideoSeeker.setSeekPosition(0f)
-                        updateDurationDisplay(0, player.duration.toInt())
+                    // CHECK: If the player is outside active trim bounds, seek to the active start first
+                    val trimOp = viewModel.project.value?.operations?.filterIsInstance<EditOperation.Trim>()?.lastOrNull()
+                    val startMs = trimOp?.startMs ?: 0L
+                    val endMs = trimOp?.endMs ?: player.duration
+                    if (player.currentPosition < startMs || player.currentPosition >= endMs) {
+                        player.seekTo(startMs)
+                        val progress = startMs.toFloat() / player.duration
+                        customVideoSeeker.setSeekPosition(progress)
+                        updateDurationDisplay(startMs.toInt(), player.duration.toInt())
                     }
                     player.play()
                     btnPlayPause.setImageResource(R.drawable.ic_pause_24)
@@ -231,11 +249,14 @@ class VideoEditingActivity : AppCompatActivity() {
 
     private fun initializeViews() {
         playerView = findViewById(R.id.playerView)
+        playerContainer = findViewById(R.id.playerContainer)
         tvDuration = findViewById(R.id.tvDuration)
         frameRecyclerView = findViewById(R.id.frameRecyclerView)
         customVideoSeeker = findViewById(R.id.customVideoSeeker)
+        timeRulerView = findViewById(R.id.timeRulerView)
         loadingScreen = findViewById(R.id.loadingScreen)
         exportScreen = findViewById(R.id.exportScreen)
+        previewLoadingOverlay = findViewById(R.id.previewLoadingOverlay)
         lottieAnimationView = findViewById(R.id.lottieAnimation)
         textTrackContainer = findViewById(R.id.textTrackContainer)
         imageTrackContainer = findViewById(R.id.imageTrackContainer)
@@ -268,18 +289,22 @@ class VideoEditingActivity : AppCompatActivity() {
                             ))
                         }
                     } else {
+                        val trimOp = viewModel.project.value?.operations?.filterIsInstance<EditOperation.Trim>()?.lastOrNull()
+                        val start = trimOp?.startMs ?: 0L
+                        val end = trimOp?.endMs ?: (if (::player.isInitialized) player.duration else 0L)
                         viewModel.addTextOperation(
                             text = text,
                             fontSize = fontSize,
                             position = "Center Align",
                             relativeX = relX,
                             relativeY = relY,
-                            color = color
+                            color = color,
+                            startTimeMs = start,
+                            endTimeMs = end
                         )
                     }
                     viewModel.selectOperation(null)
                     exitTextEditingMode()
-                    renderSegmentedPreview()
                 }
             }
         } catch (e: Exception) {
@@ -291,6 +316,7 @@ class VideoEditingActivity : AppCompatActivity() {
             findViewById<View>(R.id.textEditingToolbar)?.also { toolbar ->
                 toolbar.findViewById<ImageButton>(R.id.btnTextCancel)?.setOnClickListener {
                     draggableTextOverlay?.deactivate()
+                    viewModel.selectOperation(null)
                     exitTextEditingMode()
                 }
                 toolbar.findViewById<View>(R.id.btnTextDone)?.setOnClickListener {
@@ -339,18 +365,22 @@ class VideoEditingActivity : AppCompatActivity() {
                             ))
                         }
                     } else {
+                        val trimOp = viewModel.project.value?.operations?.filterIsInstance<EditOperation.Trim>()?.lastOrNull()
+                        val start = trimOp?.startMs ?: 0L
+                        val end = trimOp?.endMs ?: (if (::player.isInitialized) player.duration else 0L)
                         viewModel.addImageOverlayOperation(
                             imageUri = uri,
                             relativeX = relX,
                             relativeY = relY,
                             relativeWidth = relW,
                             relativeHeight = relH,
-                            rotationAngle = rotationAngle
+                            rotationAngle = rotationAngle,
+                            startTimeMs = start,
+                            endTimeMs = end
                         )
                     }
                     viewModel.selectOperation(null)
                     exitImageEditingMode()
-                    renderSegmentedPreview()
                 }
             }
         } catch (e: Exception) {
@@ -362,6 +392,7 @@ class VideoEditingActivity : AppCompatActivity() {
             findViewById<View>(R.id.imageEditingToolbar)?.also { toolbar ->
                 toolbar.findViewById<ImageButton>(R.id.btnImageCancel)?.setOnClickListener {
                     draggableImageOverlay?.deactivate()
+                    viewModel.selectOperation(null)
                     exitImageEditingMode()
                 }
                 toolbar.findViewById<View>(R.id.btnImageDone)?.setOnClickListener {
@@ -396,10 +427,6 @@ class VideoEditingActivity : AppCompatActivity() {
         }
 
         // Tool Buttons with proper scoping
-        findViewById<ImageButton>(R.id.btnTrim).setOnClickListener {
-            setActiveToolButton(R.id.btnTrim)
-            trimAction()
-        }
         findViewById<ImageButton>(R.id.btnText).setOnClickListener {
             setActiveToolButton(R.id.btnText)
             textAction()
@@ -424,10 +451,24 @@ class VideoEditingActivity : AppCompatActivity() {
         try {
             btnUndo = findViewById(R.id.btnUndo)
             btnRedo = findViewById(R.id.btnRedo)
-            btnUndo.setOnClickListener { viewModel.undo() }
-            btnRedo.setOnClickListener { viewModel.redo() }
+            btnPreview = findViewById(R.id.btnPreview)
+            btnUndo.setOnClickListener {
+                if (isShowingPreview) dismissPreview()
+                viewModel.undo()
+            }
+            btnRedo.setOnClickListener {
+                if (isShowingPreview) dismissPreview()
+                viewModel.redo()
+            }
+            btnPreview.setOnClickListener {
+                if (isShowingPreview) {
+                    dismissPreview()
+                } else {
+                    renderSegmentedPreview()
+                }
+            }
         } catch (e: Exception) {
-            Log.d(TAG, "Undo/Redo buttons not found in layout (optional)")
+            Log.d(TAG, "Undo/Redo/Preview buttons not found in layout (optional)")
         }
 
         try {
@@ -437,10 +478,51 @@ class VideoEditingActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateUIInteractionState() {
+        val uiState = viewModel.uiState.value
+        val isBusy = uiState.isExporting || isRenderingPreview
+        
+        if (::previewLoadingOverlay.isInitialized) {
+            previewLoadingOverlay.visibility = if (isRenderingPreview) View.VISIBLE else View.GONE
+        }
+        
+        val alpha = if (isBusy) 0.4f else 1.0f
+        
+        findViewById<LinearLayout>(R.id.editingControlsWrapper)?.let { wrapper ->
+            wrapper.alpha = alpha
+            for (i in 0 until wrapper.childCount) {
+                wrapper.getChildAt(i).isEnabled = !isBusy
+            }
+        }
+        
+        val hasOps = viewModel.project.value?.hasOperations() == true
+        if (::layoutSaveSplit.isInitialized && ::btnSaveText.isInitialized && ::btnSaveDropdown.isInitialized) {
+            layoutSaveSplit.alpha = if (isBusy || !hasOps) 0.4f else 1.0f
+            btnSaveText.isEnabled = !isBusy && hasOps
+            btnSaveDropdown.isEnabled = !isBusy && hasOps
+        }
+        
+        if (::btnPreview.isInitialized) {
+            val hasPreviewableOps = viewModel.project.value?.operations?.any { 
+                it is EditOperation.Crop || it is EditOperation.AddText
+            } == true
+            btnPreview.isEnabled = !isBusy && hasPreviewableOps
+            btnPreview.alpha = if (isBusy) 0.4f else if (hasPreviewableOps) 1.0f else 0.5f
+            if (isShowingPreview) {
+                btnPreview.setColorFilter(getColor(R.color.colorPrimary))
+            } else {
+                btnPreview.setColorFilter(getColor(R.color.colorOnPrimary))
+            }
+        }
+        
+        customVideoSeeker.isEnabled = !isBusy
+    }
+
     private fun setActiveToolButton(activeId: Int) {
-        val toolIds = listOf(R.id.btnTrim, R.id.btnText, R.id.btnImageOverlay, R.id.btnAudio, R.id.btnCrop, R.id.btnMerge)
+        if (isShowingPreview) dismissPreview()
+        val toolIds = listOf(R.id.btnText, R.id.btnImageOverlay, R.id.btnAudio, R.id.btnCrop, R.id.btnMerge)
         for (id in toolIds) {
-            val btn = findViewById<ImageButton>(id)
+            val btn = findViewById<ImageButton>(id) ?: continue
             btn.setBackgroundResource(if (id == activeId) R.drawable.tool_button_active else R.drawable.tool_button_inactive)
             btn.setColorFilter(
                 if (id == activeId) resources.getColor(R.color.toolTextActive, null)
@@ -456,7 +538,7 @@ class VideoEditingActivity : AppCompatActivity() {
                     if (uiState.isExporting) {
                         loadingScreen.visibility = View.VISIBLE
                         lottieAnimationView.playAnimation()
-                    } else if (!isVideoLoaded) {
+                    } else if (!isVideoLoaded || !isVideoFramesExtracted) {
                         loadingScreen.visibility = View.VISIBLE
                     } else {
                         loadingScreen.visibility = View.GONE
@@ -480,11 +562,13 @@ class VideoEditingActivity : AppCompatActivity() {
                 if (uiState.pendingOperationCount > 0) {
                     Log.d(TAG, "Pending operations: ${uiState.pendingOperationCount}")
                 }
+                updateUIInteractionState()
             }
         }
 
         lifecycleScope.launch {
             viewModel.selectedOperationId.collect { selectedId ->
+                if (selectedId != null && isShowingPreview) dismissPreview()
                 textOverlayView?.hiddenOperationId = selectedId
                 imageOverlayView?.hiddenOperationId = selectedId
                 
@@ -500,6 +584,12 @@ class VideoEditingActivity : AppCompatActivity() {
                         exitImageEditingMode()
                     }
                     
+                    // Reset editing modes to prevent multiple active editing toolbars/states
+                    draggableTextOverlay?.deactivate()
+                    draggableImageOverlay?.deactivate()
+                    exitTextEditingMode()
+                    exitImageEditingMode()
+
                     val op = viewModel.project.value?.operations?.find {
                         when (it) {
                             is EditOperation.AddText -> it.id == selectedId
@@ -537,12 +627,7 @@ class VideoEditingActivity : AppCompatActivity() {
                 if (project != null) {
                     Log.d(TAG, "Project updated with ${project.getOperationCount()} operations")
 
-                    val hasOps = project.hasOperations()
-                    if (::layoutSaveSplit.isInitialized && ::btnSaveText.isInitialized && ::btnSaveDropdown.isInitialized) {
-                        layoutSaveSplit.alpha = if (hasOps) 1.0f else 0.5f
-                        btnSaveText.isEnabled = hasOps
-                        btnSaveDropdown.isEnabled = hasOps
-                    }
+                    updateUIInteractionState()
 
                     textOverlayView?.let { overlay ->
                         val textOps = project.operations.filterIsInstance<EditOperation.AddText>()
@@ -568,71 +653,76 @@ class VideoEditingActivity : AppCompatActivity() {
     }
 
     private fun applyCropPreview(aspectRatio: String) {
-        Toast.makeText(this, "Crop $aspectRatio will be applied on export", Toast.LENGTH_SHORT).show()
+        val targetRatio = when (aspectRatio) {
+            "16:9" -> 16f / 9f
+            "9:16" -> 9f / 16f
+            "1:1" -> 1f
+            "4:5" -> 4f / 5f
+            else -> return
+        }
+
+        playerView.post {
+            val containerWidth = playerContainer.width.toFloat()
+            val containerHeight = playerContainer.height.toFloat()
+            if (containerWidth <= 0 || containerHeight <= 0) return@post
+
+            val containerRatio = containerWidth / containerHeight
+            var targetWidth = containerWidth
+            var targetHeight = containerHeight
+
+            if (targetRatio > containerRatio) {
+                targetHeight = containerWidth / targetRatio
+            } else {
+                targetWidth = containerHeight * targetRatio
+            }
+
+            val params = playerView.layoutParams as FrameLayout.LayoutParams
+            params.width = targetWidth.toInt()
+            params.height = targetHeight.toInt()
+            params.gravity = Gravity.CENTER
+            playerView.layoutParams = params
+
+            playerView.resizeMode = 4 // RESIZE_MODE_ZOOM
+
+            val overlays = listOf(textOverlayView, draggableTextOverlay, imageOverlayView, draggableImageOverlay)
+            for (overlay in overlays) {
+                overlay?.let {
+                    val overlayParams = it.layoutParams as FrameLayout.LayoutParams
+                    overlayParams.width = targetWidth.toInt()
+                    overlayParams.height = targetHeight.toInt()
+                    overlayParams.gravity = Gravity.CENTER
+                    it.layoutParams = overlayParams
+                }
+            }
+        }
     }
 
     private fun resetCropPreview() {
-        // No-op
+        playerView.post {
+            val params = playerView.layoutParams as FrameLayout.LayoutParams
+            params.width = FrameLayout.LayoutParams.MATCH_PARENT
+            params.height = FrameLayout.LayoutParams.MATCH_PARENT
+            params.gravity = Gravity.NO_GRAVITY
+            playerView.layoutParams = params
+
+            playerView.resizeMode = 0 // RESIZE_MODE_FIT
+
+            val overlays = listOf(textOverlayView, draggableTextOverlay, imageOverlayView, draggableImageOverlay)
+            for (overlay in overlays) {
+                overlay?.let {
+                    val overlayParams = it.layoutParams as FrameLayout.LayoutParams
+                    overlayParams.width = FrameLayout.LayoutParams.MATCH_PARENT
+                    overlayParams.height = FrameLayout.LayoutParams.MATCH_PARENT
+                    overlayParams.gravity = Gravity.NO_GRAVITY
+                    it.layoutParams = overlayParams
+                }
+            }
+        }
     }
 
     @SuppressLint("InflateParams")
     private fun trimAction() {
-        val videoDuration = player.duration
-        if (videoDuration <= 0) return
-
-        val bottomSheetDialog = BottomSheetDialog(this)
-        val sheetView = layoutInflater.inflate(R.layout.trim_bottom_sheet_dialog, null)
-        val rangeSlider: RangeSlider = sheetView.findViewById(R.id.rangeSlider)
-
-        // Set UI colors from your theme
-        rangeSlider.trackActiveTintList = getColorStateList(R.color.colorPrimary)
-        rangeSlider.thumbTintList = getColorStateList(R.color.colorPrimary)
-
-        val totalSeconds = (videoDuration / 1000).toFloat()
-        rangeSlider.valueFrom = 0f
-        rangeSlider.valueTo = maxOf(100f, totalSeconds)
-        rangeSlider.values = listOf(0f, totalSeconds)
-        rangeSlider.valueTo = totalSeconds
-
-        rangeSlider.addOnChangeListener { slider, _, fromUser ->
-            if (fromUser) {
-                // PRO FEATURE: Live seeking while trimming
-                // If user moves start handle, seek to start. If end handle, seek to end.
-                val thumbIndex = slider.activeThumbIndex
-                if (thumbIndex in 0 until slider.values.size) {
-                    val seekTargetMs = slider.values[thumbIndex].toLong() * 1000
-                    player.seekTo(seekTargetMs)
-                }
-            }
-        }
-
-        sheetView.findViewById<Button>(R.id.btnDoneTrim).setOnClickListener {
-            val startMs = rangeSlider.values[0].toLong() * 1000
-            val endMs = rangeSlider.values[1].toLong() * 1000
-            viewModel.addTrimOperation(startMs, endMs)
-            updatePreviewWithClipping(startMs, endMs)
-            bottomSheetDialog.dismiss()
-        }
-
-        bottomSheetDialog.setContentView(sheetView)
-        bottomSheetDialog.show()
-    }
-
-    private fun updatePreviewWithClipping(startMs: Long, endMs: Long) {
-        videoUri?.let {
-            try {
-                val mediaItem = MediaItem.Builder()
-                    .setUri(it)
-                    .setClipStartPositionMs(startMs)
-                    .setClipEndPositionMs(endMs)
-                    .build()
-                player.setMediaItem(mediaItem)
-                player.prepare()
-            } catch (e: Exception) {
-                Log.w(TAG, "Clipping not supported, falling back to seek: ${e.message}")
-                player.seekTo(startMs)
-            }
-        }
+        Toast.makeText(this, "Drag the handles on the timeline's main video track to trim.", Toast.LENGTH_LONG).show()
     }
 
     @SuppressLint("InflateParams")
@@ -676,21 +766,18 @@ class VideoEditingActivity : AppCompatActivity() {
             viewModel.addCropOperation("16:9")
             updateActiveUi("16:9")
             bottomSheetDialog.dismiss()
-            renderSegmentedPreview()
         }
 
         sheetView.findViewById<LinearLayout>(R.id.frameAspectRatio2).setOnClickListener {
             viewModel.addCropOperation("9:16")
             updateActiveUi("9:16")
             bottomSheetDialog.dismiss()
-            renderSegmentedPreview()
         }
 
         sheetView.findViewById<LinearLayout>(R.id.frameAspectRatio3).setOnClickListener {
             viewModel.addCropOperation("1:1")
             updateActiveUi("1:1")
             bottomSheetDialog.dismiss()
-            renderSegmentedPreview()
         }
 
         sheetView.findViewById<ImageButton>(R.id.btnCloseSheet).setOnClickListener {
@@ -725,6 +812,8 @@ class VideoEditingActivity : AppCompatActivity() {
             setupColorPicker(toolbar)
         }
         findViewById<LinearLayout>(R.id.editingControlsWrapper)?.visibility = View.GONE
+        findViewById<View>(R.id.timelineContainer)?.visibility = View.GONE
+        findViewById<View>(R.id.timelineDivider)?.visibility = View.GONE
         if (::player.isInitialized && player.isPlaying) {
             player.pause()
         }
@@ -734,6 +823,8 @@ class VideoEditingActivity : AppCompatActivity() {
         isTextEditingActive = false
         textEditingToolbar?.visibility = View.GONE
         findViewById<LinearLayout>(R.id.editingControlsWrapper)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.timelineContainer)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.timelineDivider)?.visibility = View.VISIBLE
     }
 
     private fun imageOverlayAction() {
@@ -905,10 +996,11 @@ class VideoEditingActivity : AppCompatActivity() {
             val btnDone = view.findViewById<Button>(R.id.btnDoneAudio)
             val btnClose = view.findViewById<ImageButton>(R.id.btnCloseAudioSheet)
 
-            val videoDurationMs = if (::player.isInitialized) player.duration else 0L
+            val trimOp = viewModel.project.value?.operations?.filterIsInstance<com.tharunbirla.librecuts.models.EditOperation.Trim>()?.lastOrNull()
+            val currentVideoDuration = if (trimOp != null) trimOp.endMs - trimOp.startMs else (if (::player.isInitialized) player.duration else 0L)
 
             // Configure rangeSlider
-            val initialEnd = minOf(audioDuration, videoDurationMs).toFloat()
+            val initialEnd = minOf(audioDuration, currentVideoDuration).toFloat()
             rangeSlider.valueFrom = 0f
             rangeSlider.valueTo = maxOf(100f, audioDuration.toFloat())
             rangeSlider.values = listOf(0f, initialEnd)
@@ -990,15 +1082,15 @@ class VideoEditingActivity : AppCompatActivity() {
                     var start = values[0]
                     var end = values[1]
 
-                    if (end - start > videoDurationMs) {
-                        // Enforce select segment length does not exceed videoDurationMs
+                    if (end - start > currentVideoDuration) {
+                        // Enforce select segment length does not exceed currentVideoDuration
                         if (start != lastStartMs.toFloat()) {
                             // Left thumb (start) was dragged: adjust end
-                            end = (start + videoDurationMs).coerceAtMost(audioDuration.toFloat())
-                            start = (end - videoDurationMs).coerceAtLeast(0f)
+                            end = (start + currentVideoDuration).coerceAtMost(audioDuration.toFloat())
+                            start = (end - currentVideoDuration).coerceAtLeast(0f)
                         } else {
                             // Right thumb (end) was dragged: adjust start
-                            start = (end - videoDurationMs).coerceAtLeast(0f)
+                            start = (end - currentVideoDuration).coerceAtLeast(0f)
                         }
                         slider.values = listOf(start, end)
                     }
@@ -1029,12 +1121,17 @@ class VideoEditingActivity : AppCompatActivity() {
             btnDone.setOnClickListener {
                 stopPlayback()
                 val replaceOriginal = switchReplace?.isChecked ?: false
+                val trimOp = viewModel.project.value?.operations?.filterIsInstance<EditOperation.Trim>()?.lastOrNull()
+                val start = trimOp?.startMs ?: 0L
+                val end = trimOp?.endMs ?: (if (::player.isInitialized) player.duration else 0L)
                 viewModel.addBackgroundAudioOperation(
                     audioUri = tempAudioUri,
                     removeOriginalAudio = replaceOriginal,
                     volume = volumeSlider.value,
                     internalStartMs = startMs,
-                    internalEndMs = endMs
+                    internalEndMs = endMs,
+                    startTimeMs = start,
+                    endTimeMs = end
                 )
                 Toast.makeText(this@VideoEditingActivity, "Background audio added", Toast.LENGTH_SHORT).show()
                 bottomSheet.dismiss()
@@ -1059,6 +1156,7 @@ class VideoEditingActivity : AppCompatActivity() {
      * is now passed to buildConsolidatedFFmpegCommand so drawtext gets a valid fontfile= path.
      */
     private fun saveAction() {
+        if (isShowingPreview) dismissPreview()
         val project = viewModel.project.value
         if (project == null) {
             showError("No project loaded")
@@ -1174,6 +1272,7 @@ class VideoEditingActivity : AppCompatActivity() {
     }
 
     private fun showQualitySettingsDialog() {
+        if (isShowingPreview) dismissPreview()
         val bottomSheetDialog = BottomSheetDialog(this)
         val sheetView = layoutInflater.inflate(R.layout.export_quality_bottom_sheet_dialog, null)
 
@@ -1284,20 +1383,29 @@ class VideoEditingActivity : AppCompatActivity() {
                         // customVideoSeeker.setSeekPosition(0f)
 
                         stopProgressUpdater()
+                        if (isShowingPreview) dismissPreview()
                     }
                     if (state == Player.STATE_READY) {
                         isVideoLoaded = true
+                        if (isVideoFramesExtracted) {
+                            loadingScreen.visibility = View.GONE
+                        }
                         customVideoSeeker.setVideoDuration(player.duration)
+                        timeRulerView.setVideoDuration(player.duration)
                         updateDurationDisplay(player.currentPosition.toInt(), player.duration.toInt())
                         viewModel.project.value?.let { renderTracks(it) }
 
                         val format = player.videoFormat
                         if (format != null && format.width > 0 && format.height > 0) {
-                            textOverlayView?.setVideoSize(format.width, format.height)
-                            draggableTextOverlay?.setVideoSize(format.width, format.height)
-                            imageOverlayView?.setVideoSize(format.width, format.height)
-                            draggableImageOverlay?.setVideoSize(format.width, format.height)
+                            val rotation = format.rotationDegrees
+                            val displayWidth = if (rotation == 90 || rotation == 270) format.height else format.width
+                            val displayHeight = if (rotation == 90 || rotation == 270) format.width else format.height
+                            textOverlayView?.setVideoSize(displayWidth, displayHeight)
+                            draggableTextOverlay?.setVideoSize(displayWidth, displayHeight)
+                            imageOverlayView?.setVideoSize(displayWidth, displayHeight)
+                            draggableImageOverlay?.setVideoSize(displayWidth, displayHeight)
                         }
+                        updateUIInteractionState()
                     }
                 }
 
@@ -1311,10 +1419,13 @@ class VideoEditingActivity : AppCompatActivity() {
 
                 override fun onVideoSizeChanged(videoSize: com.google.android.exoplayer2.video.VideoSize) {
                     if (videoSize.width > 0 && videoSize.height > 0) {
-                        textOverlayView?.setVideoSize(videoSize.width, videoSize.height)
-                        draggableTextOverlay?.setVideoSize(videoSize.width, videoSize.height)
-                        imageOverlayView?.setVideoSize(videoSize.width, videoSize.height)
-                        draggableImageOverlay?.setVideoSize(videoSize.width, videoSize.height)
+                        val rotation = videoSize.unappliedRotationDegrees
+                        val displayWidth = if (rotation == 90 || rotation == 270) videoSize.height else videoSize.width
+                        val displayHeight = if (rotation == 90 || rotation == 270) videoSize.width else videoSize.height
+                        textOverlayView?.setVideoSize(displayWidth, displayHeight)
+                        draggableTextOverlay?.setVideoSize(displayWidth, displayHeight)
+                        imageOverlayView?.setVideoSize(displayWidth, displayHeight)
+                        draggableImageOverlay?.setVideoSize(displayWidth, displayHeight)
                     }
                 }
 
@@ -1344,6 +1455,13 @@ class VideoEditingActivity : AppCompatActivity() {
     private fun syncUiWithPlayer() {
         val currentPos = player.currentPosition
         val duration = player.duration
+        
+        val trimOp = viewModel.project.value?.operations?.filterIsInstance<EditOperation.Trim>()?.lastOrNull()
+        if (trimOp != null && currentPos >= trimOp.endMs) {
+            player.seekTo(trimOp.startMs)
+            return
+        }
+
         if (duration > 0) {
             val progress = currentPos.toFloat() / duration
             customVideoSeeker.setSeekPosition(progress)
@@ -1404,8 +1522,35 @@ class VideoEditingActivity : AppCompatActivity() {
     }
 
     private fun renderTracks(project: VideoProject) {
-        val duration = if (::player.isInitialized) player.duration else 0L
-        if (duration <= 0L) return
+        val originalDuration = if (::player.isInitialized) player.duration else 0L
+        if (originalDuration <= 0L) return
+
+        val trimOp = project.operations.filterIsInstance<EditOperation.Trim>().lastOrNull()
+        val activeStart = trimOp?.startMs ?: 0L
+        val activeEnd = trimOp?.endMs ?: originalDuration
+
+        // Update ruler and seeker durations to original duration
+        timeRulerView.setVideoDuration(originalDuration)
+        customVideoSeeker.setVideoDuration(originalDuration)
+
+        // Main Video Track
+        val mainVideoTrack = findViewById<com.tharunbirla.librecuts.customviews.TrackTrimView>(R.id.mainVideoTrimTrack)
+        if (mainVideoTrack != null) {
+            mainVideoTrack.isMainVideoTrack = true
+            mainVideoTrack.trackColor = android.graphics.Color.TRANSPARENT
+            mainVideoTrack.maxDurationMs = originalDuration
+            mainVideoTrack.activeStartMs = 0L
+            mainVideoTrack.activeEndMs = originalDuration
+            mainVideoTrack.setRange(originalDuration, activeStart, activeEnd)
+            mainVideoTrack.onTrimChanged = { start, end ->
+                viewModel.updateMainVideoTrim(start, end)
+                player.seekTo(start) // Seek when trim handles moved
+            }
+            mainVideoTrack.onTrimAdjusting = { start, end ->
+                updateActiveBoundaries(start, end)
+            }
+            mainVideoTrack.invalidate()
+        }
 
         // Text tracks
         textTrackContainer.removeAllViews()
@@ -1422,9 +1567,16 @@ class VideoEditingActivity : AppCompatActivity() {
                     isSelectedTrack = (op.id == viewModel.selectedOperationId.value)
                     trackIcon = androidx.core.content.ContextCompat.getDrawable(this@VideoEditingActivity, R.drawable.ic_text_24)
                     onTrackClicked = {
-                        viewModel.selectOperation(op.id)
+                        if (viewModel.selectedOperationId.value == op.id) {
+                            viewModel.selectOperation(null)
+                        } else {
+                            viewModel.selectOperation(op.id)
+                        }
                     }
-                    setRange(duration, op.startTimeMs ?: 0L, op.endTimeMs ?: duration)
+                    maxDurationMs = originalDuration
+                    activeStartMs = activeStart
+                    activeEndMs = activeEnd
+                    setRange(originalDuration, op.startTimeMs ?: activeStart, op.endTimeMs ?: activeEnd)
                     onTrimChanged = { start, end ->
                         viewModel.updateOperation(op.copy(startTimeMs = start, endTimeMs = end))
                     }
@@ -1450,9 +1602,16 @@ class VideoEditingActivity : AppCompatActivity() {
                     isSelectedTrack = (op.id == viewModel.selectedOperationId.value)
                     trackIcon = androidx.core.content.ContextCompat.getDrawable(this@VideoEditingActivity, R.drawable.ic_image_24)
                     onTrackClicked = {
-                        viewModel.selectOperation(op.id)
+                        if (viewModel.selectedOperationId.value == op.id) {
+                            viewModel.selectOperation(null)
+                        } else {
+                            viewModel.selectOperation(op.id)
+                        }
                     }
-                    setRange(duration, op.startTimeMs ?: 0L, op.endTimeMs ?: duration)
+                    maxDurationMs = originalDuration
+                    activeStartMs = activeStart
+                    activeEndMs = activeEnd
+                    setRange(originalDuration, op.startTimeMs ?: activeStart, op.endTimeMs ?: activeEnd)
                     onTrimChanged = { start, end ->
                         viewModel.updateOperation(op.copy(startTimeMs = start, endTimeMs = end))
                     }
@@ -1494,9 +1653,16 @@ class VideoEditingActivity : AppCompatActivity() {
                     isSelectedTrack = (op.id == viewModel.selectedOperationId.value)
                     trackIcon = androidx.core.content.ContextCompat.getDrawable(this@VideoEditingActivity, R.drawable.ic_audio_24)
                     onTrackClicked = {
-                        viewModel.selectOperation(op.id)
+                        if (viewModel.selectedOperationId.value == op.id) {
+                            viewModel.selectOperation(null)
+                        } else {
+                            viewModel.selectOperation(op.id)
+                        }
                     }
-                    setRange(duration, op.startTimeMs ?: 0L, op.endTimeMs ?: duration)
+                    maxDurationMs = originalDuration
+                    activeStartMs = activeStart
+                    activeEndMs = activeEnd
+                    setRange(originalDuration, op.startTimeMs ?: activeStart, op.endTimeMs ?: activeEnd)
                     onTrimChanged = { start, end ->
                         viewModel.updateOperation(op.copy(startTimeMs = start, endTimeMs = end))
                     }
@@ -1580,15 +1746,22 @@ class VideoEditingActivity : AppCompatActivity() {
                     extractedFrames.addAll(tempFrames)
                     frameRecyclerView.adapter = FrameAdapter(extractedFrames)
 
-                    // FINALLY: Hide the loading screen now that everything is visible
-                    loadingScreen.visibility = View.GONE
+                    isVideoFramesExtracted = true
+                    if (isVideoLoaded) {
+                        loadingScreen.visibility = View.GONE
+                    }
                 }
 
             } catch (e: Exception) {
                 Log.e(TAG, "Extraction error: ${e.message}")
                 // FIX: Recycle tempFrames on error — they won't reach the UI
+                isVideoFramesExtracted = true
                 tempFrames.forEach { if (!it.isRecycled) it.recycle() }
-                withContext(Dispatchers.Main) { loadingScreen.visibility = View.GONE }
+                withContext(Dispatchers.Main) {
+                    if (isVideoLoaded) {
+                        loadingScreen.visibility = View.GONE
+                    }
+                }
             } finally {
                 retriever.release()
                 // FIX: If cancelled mid-extraction, recycle orphaned bitmaps
@@ -1728,6 +1901,9 @@ class VideoEditingActivity : AppCompatActivity() {
         if (!::tempInputFile.isInitialized || !isVideoLoaded) return
 
         previewJob?.cancel()
+        isRenderingPreview = true
+        updateUIInteractionState()
+
         previewJob = lifecycleScope.launch {
             val seekPos = if (::player.isInitialized) player.currentPosition else 0L
             val previewOutput = File(cacheDir, "preview_segment_${System.currentTimeMillis()}.mp4")
@@ -1737,7 +1913,11 @@ class VideoEditingActivity : AppCompatActivity() {
                 previewOutputPath = previewOutput.absolutePath,
                 seekPositionMs = seekPos,
                 fontFilePath = fontFilePath
-            ) ?: return@launch
+            ) ?: run {
+                isRenderingPreview = false
+                updateUIInteractionState()
+                return@launch
+            }
 
             Log.d(TAG, "Rendering segmented preview...")
 
@@ -1745,6 +1925,7 @@ class VideoEditingActivity : AppCompatActivity() {
                 ffmpegEngine.executeCommand(cmd)
             }
 
+            isRenderingPreview = false
             if (result is FFmpegRenderEngine.RenderResult.Success && previewOutput.exists()) {
                 isShowingPreview = true
                 previewFile?.delete() // Clean up previous preview
@@ -1758,9 +1939,11 @@ class VideoEditingActivity : AppCompatActivity() {
                 try {
                     findViewById<TextView>(R.id.tvPreviewBadge)?.visibility = View.VISIBLE
                 } catch (_: Exception) {}
+                updateUIInteractionState()
             } else {
                 Log.w(TAG, "Preview render failed or was cancelled")
                 previewOutput.delete()
+                updateUIInteractionState()
             }
         }
     }
@@ -1784,6 +1967,7 @@ class VideoEditingActivity : AppCompatActivity() {
 
         previewFile?.delete()
         previewFile = null
+        updateUIInteractionState()
     }
 
     override fun onDestroy() {
@@ -1839,6 +2023,46 @@ class VideoEditingActivity : AppCompatActivity() {
             }
             colorPickerList.addView(colorView)
         }
+    }
+
+    private fun updateActiveBoundaries(activeStart: Long, activeEnd: Long) {
+        for (i in 0 until textTrackContainer.childCount) {
+            val track = textTrackContainer.getChildAt(i) as? com.tharunbirla.librecuts.customviews.TrackTrimView
+            track?.let {
+                it.activeStartMs = activeStart
+                it.activeEndMs = activeEnd
+                it.invalidate()
+            }
+        }
+
+        for (i in 0 until imageTrackContainer.childCount) {
+            val track = imageTrackContainer.getChildAt(i) as? com.tharunbirla.librecuts.customviews.TrackTrimView
+            track?.let {
+                it.activeStartMs = activeStart
+                it.activeEndMs = activeEnd
+                it.invalidate()
+            }
+        }
+
+        for (i in 0 until audioTrackContainer.childCount) {
+            val track = audioTrackContainer.getChildAt(i) as? com.tharunbirla.librecuts.customviews.TrackTrimView
+            track?.let {
+                it.activeStartMs = activeStart
+                it.activeEndMs = activeEnd
+                it.invalidate()
+            }
+        }
+    }
+
+    private fun showQuitConfirmationDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Quit Editing?")
+            .setMessage("Are you sure you want to quit? Any unsaved edits will be lost.")
+            .setPositiveButton("Quit") { _, _ ->
+                finish()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     companion object {

@@ -5,6 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background"
+    android:fitsSystemWindows="true"
     tools:context=".VideoEditingActivity">
 
     <LinearLayout
@@ -57,6 +58,16 @@
                 android:alpha="0.5"
                 android:enabled="false"/>
 
+            <ImageButton
+                android:id="@+id/btnPreview"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_preview_24"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Preview Render"
+                android:layout_marginEnd="16dp"
+                app:tint="@color/colorOnPrimary" />
+
             <LinearLayout
                 android:id="@+id/layoutSaveSplit"
                 android:layout_width="120dp"
@@ -106,7 +117,6 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_margin="24dp"
             android:background="@color/surfaceContainer"
             android:elevation="8dp"
             android:clipToOutline="true"
@@ -216,13 +226,16 @@
             </LinearLayout>
 
             <FrameLayout
+                android:id="@+id/timelineContainer"
                 android:layout_width="match_parent"
-                android:layout_height="160dp"
+                android:layout_height="180dp"
                 android:layout_marginHorizontal="16dp">
 
                 <ScrollView
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent">
+                    android:layout_height="match_parent"
+                    android:paddingTop="28dp"
+                    android:clipToPadding="false">
                     
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -239,6 +252,10 @@
                                 android:id="@+id/frameRecyclerView"
                                 android:layout_width="match_parent"
                                 android:layout_height="match_parent"/>
+                            <com.tharunbirla.librecuts.customviews.TrackTrimView
+                                android:id="@+id/mainVideoTrimTrack"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent" />
                         </FrameLayout>
 
                         <!-- Text Track Container -->
@@ -268,6 +285,13 @@
                     </LinearLayout>
                 </ScrollView>
 
+                <com.tharunbirla.librecuts.customviews.TimeRulerView
+                    android:id="@+id/timeRulerView"
+                    android:layout_width="match_parent"
+                    android:layout_height="24dp"
+                    android:layout_gravity="top"
+                    android:background="@color/background" />
+
                 <com.tharunbirla.librecuts.customviews.CustomVideoSeeker
                     android:id="@+id/customVideoSeeker"
                     android:layout_width="match_parent"
@@ -276,6 +300,7 @@
             </FrameLayout>
 
             <View
+                android:id="@+id/timelineDivider"
                 android:layout_width="48dp"
                 android:layout_height="4dp"
                 android:layout_gravity="center_horizontal"
@@ -319,27 +344,6 @@
                 android:orientation="vertical"
                 android:gravity="center">
                 <ImageButton
-                    android:id="@+id/btnTrim"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:background="@drawable/tool_button_active"
-                    android:src="@drawable/ic_split_24"
-                    app:tint="@color/toolTextActive" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Trim"
-                    android:textSize="11sp"
-                    android:textColor="@color/toolTextInactive"/>
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:gravity="center">
-                <ImageButton
                     android:id="@+id/btnText"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
@@ -365,12 +369,12 @@
                     android:layout_width="48dp"
                     android:layout_height="48dp"
                     android:background="@drawable/tool_button_inactive"
-                    android:src="@drawable/ic_image_24"
+                    android:src="@drawable/ic_sticker_24"
                     app:tint="@color/toolTextInactive" />
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Image"
+                    android:text="Stickers"
                     android:textSize="11sp"
                     android:textColor="@color/toolTextInactive"/>
             </LinearLayout>
@@ -428,12 +432,12 @@
                     android:layout_width="48dp"
                     android:layout_height="48dp"
                     android:background="@drawable/tool_button_inactive"
-                    android:src="@drawable/ic_add_photos_24"
+                    android:src="@drawable/ic_add_24"
                     app:tint="@color/toolTextInactive" />
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Adjust"
+                    android:text="Add"
                     android:textSize="11sp"
                     android:textColor="@color/toolTextInactive"/>
             </LinearLayout>
@@ -453,5 +457,22 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/previewLoadingOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#55000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_gravity="center"
+            android:indeterminate="true"
+            android:indeterminateTint="#FF4081" />
+    </FrameLayout>
 
 </RelativeLayout>

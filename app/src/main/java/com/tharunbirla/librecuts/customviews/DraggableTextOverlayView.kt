@@ -56,7 +56,7 @@ class DraggableTextOverlayView @JvmOverloads constructor(
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             val scaleFactor = detector.scaleFactor
-            val newSize = (currentFontSize * scaleFactor).toInt().coerceIn(12, 150)
+            val newSize = (currentFontSize * scaleFactor).toInt().coerceIn(12, 500)
             if (newSize != currentFontSize) {
                 setFontSize(newSize)
             }
@@ -107,6 +107,11 @@ class DraggableTextOverlayView @JvmOverloads constructor(
     }
 
     private val selectionRect = RectF()
+
+    private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#007AFF")
+        style = Paint.Style.FILL
+    }
 
     fun setVideoSize(width: Int, height: Int) {
         this.videoWidth = width
@@ -249,7 +254,7 @@ class DraggableTextOverlayView @JvmOverloads constructor(
 
     /** Update the font size from external toolbar. */
     fun setFontSize(size: Int) {
-        currentFontSize = size.coerceIn(8, 120)
+        currentFontSize = size.coerceIn(8, 500)
         updateFontSizeOnScreen()
         invalidate()
     }
@@ -360,6 +365,13 @@ class DraggableTextOverlayView @JvmOverloads constructor(
                 editText.y + editText.height + 4f
             )
             canvas.drawRoundRect(selectionRect, 8f, 8f, selectionPaint)
+
+            // Draw 4 corner resize handles
+            val handleRadius = 12f
+            canvas.drawCircle(selectionRect.left, selectionRect.top, handleRadius, handlePaint)
+            canvas.drawCircle(selectionRect.right, selectionRect.top, handleRadius, handlePaint)
+            canvas.drawCircle(selectionRect.left, selectionRect.bottom, handleRadius, handlePaint)
+            canvas.drawCircle(selectionRect.right, selectionRect.bottom, handleRadius, handlePaint)
         }
     }
 

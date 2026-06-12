@@ -59,7 +59,67 @@ class VideoEditingViewModel : ViewModel() {
         updateUiState { it.copy(canUndo = false) }
     }
 
-    fun addTrimOperation(startMs: Long, endMs: Long) = addOperation(EditOperation.Trim(startMs, endMs))
+    fun updateMainVideoTrim(startMs: Long, endMs: Long) {
+        viewModelScope.launch {
+            _project.update { current ->
+                if (current == null) return@update null
+
+                val ops = current.operations.toMutableList()
+                
+                val trimIndex = ops.indexOfFirst { it is EditOperation.Trim }
+                if (trimIndex != -1) {
+                    ops[trimIndex] = EditOperation.Trim(startMs, endMs)
+                } else {
+                    ops.add(EditOperation.Trim(startMs, endMs))
+                }
+
+                for (i in ops.indices) {
+                    val op = ops[i]
+                    when (op) {
+                        is EditOperation.AddText -> {
+                            val newStart = maxOf(op.startTimeMs ?: 0L, startMs)
+                            val newEnd = minOf(op.endTimeMs ?: Long.MAX_VALUE, endMs)
+                            if (newStart < newEnd) {
+                                ops[i] = op.copy(startTimeMs = newStart, endTimeMs = newEnd)
+                            } else {
+                                ops[i] = op.copy(startTimeMs = startMs, endTimeMs = startMs + 100L)
+                            }
+                        }
+                        is EditOperation.AddImageOverlay -> {
+                            val newStart = maxOf(op.startTimeMs ?: 0L, startMs)
+                            val newEnd = minOf(op.endTimeMs ?: Long.MAX_VALUE, endMs)
+                            if (newStart < newEnd) {
+                                ops[i] = op.copy(startTimeMs = newStart, endTimeMs = newEnd)
+                            } else {
+                                ops[i] = op.copy(startTimeMs = startMs, endTimeMs = startMs + 100L)
+                            }
+                        }
+                        is EditOperation.AddBackgroundAudio -> {
+                            val newStart = maxOf(op.startTimeMs ?: 0L, startMs)
+                            val newEnd = minOf(op.endTimeMs ?: Long.MAX_VALUE, endMs)
+                            if (newStart < newEnd) {
+                                ops[i] = op.copy(startTimeMs = newStart, endTimeMs = newEnd)
+                            } else {
+                                ops[i] = op.copy(startTimeMs = startMs, endTimeMs = startMs + 100L)
+                            }
+                        }
+                        else -> {}
+                    }
+                }
+
+                _undoStack.value = _undoStack.value + current
+                _redoStack.value = emptyList()
+                current.copy(operations = ops)
+            }
+            updateUiState { state ->
+                state.copy(
+                    pendingOperationCount = _project.value?.getOperationCount() ?: 0,
+                    canUndo = _undoStack.value.isNotEmpty(),
+                    canRedo = false
+                )
+            }
+        }
+    }
     fun addCropOperation(aspectRatio: String) = addOperation(EditOperation.Crop(aspectRatio))
 
     fun addTextOperation(
@@ -68,7 +128,9 @@ class VideoEditingViewModel : ViewModel() {
         position: String,
         relativeX: Float? = null,
         relativeY: Float? = null,
-        color: String = "#FFFFFF"
+        color: String = "#FFFFFF",
+        startTimeMs: Long? = null,
+        endTimeMs: Long? = null
     ) {
         addOperation(
             EditOperation.AddText(
@@ -77,7 +139,9 @@ class VideoEditingViewModel : ViewModel() {
                 position = TextPosition.fromLabel(position),
                 relativeX = relativeX,
                 relativeY = relativeY,
-                color = color
+                color = color,
+                startTimeMs = startTimeMs,
+                endTimeMs = endTimeMs
             )
         )
     }
@@ -118,7 +182,9 @@ class VideoEditingViewModel : ViewModel() {
         relativeY: Float,
         relativeWidth: Float,
         relativeHeight: Float,
-        rotationAngle: Float
+        rotationAngle: Float,
+        startTimeMs: Long? = null,
+        endTimeMs: Long? = null
     ) {
         addOperation(
             EditOperation.AddImageOverlay(
@@ -127,7 +193,9 @@ class VideoEditingViewModel : ViewModel() {
                 relativeY = relativeY,
                 relativeWidth = relativeWidth,
                 relativeHeight = relativeHeight,
-                rotationAngle = rotationAngle
+                rotationAngle = rotationAngle,
+                startTimeMs = startTimeMs,
+                endTimeMs = endTimeMs
             )
         )
     }
@@ -303,7 +371,7 @@ class VideoEditingViewModel : ViewModel() {
     }
 
     /** Build a drawtext filter expression for a text operation. */
-    private fun buildDrawtextExpr(op: EditOperation.AddText, fontFilePath: String?): String {
+    private fun buildDrawtextExpr(op: EditOperation.AddText, fontFilePath: String?, offsetMs: Long = 0L): String {
         val escapedText = op.text
             .replace("\\", "\\\\")
             .replace("'", "\\'")
@@ -327,15 +395,15 @@ class VideoEditingViewModel : ViewModel() {
             op.position.ffmpegParam
         }
 
-        val enablePart = buildEnableExpr(op.startTimeMs, op.endTimeMs)
+        val enablePart = buildEnableExpr(op.startTimeMs, op.endTimeMs, offsetMs)
         return "drawtext=${fontPart}text='$escapedText':fontcolor='${op.color}':fontsize=${op.fontSize}:$positionPart$enablePart"
     }
 
-    private fun buildEnableExpr(startTimeMs: Long?, endTimeMs: Long?): String {
+    private fun buildEnableExpr(startTimeMs: Long?, endTimeMs: Long?, offsetMs: Long = 0L): String {
         if (startTimeMs == null && endTimeMs == null) return ""
-        val startSec = (startTimeMs ?: 0L) / 1000.0
+        val startSec = maxOf(0L, (startTimeMs ?: 0L) - offsetMs) / 1000.0
         return if (endTimeMs != null) {
-            val endSec = endTimeMs / 1000.0
+            val endSec = maxOf(0L, endTimeMs - offsetMs) / 1000.0
             ":enable='between(t,$startSec,$endSec)'"
         } else {
             ":enable='gte(t,$startSec)'"
@@ -352,7 +420,8 @@ class VideoEditingViewModel : ViewModel() {
         operations: List<EditOperation>,
         fontFilePath: String?,
         inputLabel: String = "[0:v]",
-        imageInputIndices: List<Pair<Int, EditOperation.AddImageOverlay>> = emptyList()
+        imageInputIndices: List<Pair<Int, EditOperation.AddImageOverlay>> = emptyList(),
+        offsetMs: Long = 0L
     ): Pair<List<String>, String> {
         val stages = mutableListOf<String>()
         var currentLabel = inputLabel
@@ -370,7 +439,7 @@ class VideoEditingViewModel : ViewModel() {
                     }
                 }
                 is EditOperation.AddText -> {
-                    val filterExpr = buildDrawtextExpr(op, fontFilePath)
+                    val filterExpr = buildDrawtextExpr(op, fontFilePath, offsetMs)
                     val nextLabel = "[v$stageIndex]"
                     stages.add("$currentLabel$filterExpr$nextLabel")
                     currentLabel = nextLabel
@@ -390,7 +459,7 @@ class VideoEditingViewModel : ViewModel() {
                         // Rotate image (c=none preserves transparent background)
                         stages.add("${scaledImgLabel}rotate=$radians:c=none $rotatedImgLabel")
                         // Overlay image on the reference video
-                        val enablePart = buildEnableExpr(op.startTimeMs, op.endTimeMs)
+                        val enablePart = buildEnableExpr(op.startTimeMs, op.endTimeMs, offsetMs)
                         stages.add("$refVidLabel$rotatedImgLabel overlay=x=(W*${op.relativeX})-(w/2):y=(H*${op.relativeY})-(h/2)$enablePart $nextLabel")
 
                         currentLabel = nextLabel
@@ -451,14 +520,17 @@ class VideoEditingViewModel : ViewModel() {
         val imageOps = operations.filterIsInstance<EditOperation.AddImageOverlay>()
 
         // ── Unified Input Indexing ────────────────────────────────────────────
+        val offsetMs = trimOp?.startMs ?: 0L
         val cmd = StringBuilder()
         var inputIndex = 0
 
         // 1. Source Video Input (Index 0)
+        var outputDuration: Double? = null
         if (trimOp != null && mergeOp == null) {
             val startSecs = trimOp.startMs / 1000.0
             val duration = (trimOp.endMs - trimOp.startMs) / 1000.0
-            cmd.append("-ss $startSecs -i \"$sourceFilePath\" -to $duration")
+            outputDuration = duration
+            cmd.append("-ss $startSecs -t $duration -i \"$sourceFilePath\"")
         } else {
             cmd.append("-i \"$sourceFilePath\"")
         }
@@ -503,7 +575,8 @@ class VideoEditingViewModel : ViewModel() {
                 operations = videoOps,
                 fontFilePath = fontFilePath,
                 inputLabel = "[0:v]",
-                imageInputIndices = imageInputIndices
+                imageInputIndices = imageInputIndices,
+                offsetMs = offsetMs
             )
             filterParts.addAll(sourceVideoStages)
 
@@ -542,7 +615,8 @@ class VideoEditingViewModel : ViewModel() {
             operations = videoOps,
             fontFilePath = fontFilePath,
             inputLabel = "[0:v]",
-            imageInputIndices = imageInputIndices
+            imageInputIndices = imageInputIndices,
+            offsetMs = offsetMs
         )
         filterComplexParts.addAll(videoStages)
 
@@ -576,8 +650,8 @@ class VideoEditingViewModel : ViewModel() {
                         filters.add("atrim=start=$internalStartSec,asetpts=PTS-STARTPTS")
                     }
                 }
-                
-                val delayMs = audioOp.startTimeMs ?: 0L
+                var delayMs = (audioOp.startTimeMs ?: 0L) - offsetMs
+                if (delayMs < 0) delayMs = 0L
                 if (delayMs > 0) {
                     filters.add("adelay=$delayMs|$delayMs")
                 }
@@ -643,6 +717,9 @@ class VideoEditingViewModel : ViewModel() {
             cmd.append(" -c:a aac")
         }
 
+        if (outputDuration != null) {
+            cmd.append(" -t $outputDuration")
+        }
         cmd.append(" \"$outputFilePath\"")
 
         val finalCommand = cmd.toString()
@@ -674,16 +751,19 @@ class VideoEditingViewModel : ViewModel() {
         val videoOps = operations.filter { it is EditOperation.Crop || it is EditOperation.AddText }
         val trimOp = operations.filterIsInstance<EditOperation.Trim>().lastOrNull()
 
+        val offsetMs = trimOp?.startMs ?: 0L
         val cmd = StringBuilder()
+        var outputDuration: Double? = null
         if (trimOp != null) {
             val durationSecs = (trimOp.endMs - trimOp.startMs) / 1000.0
-            cmd.append("-ss ${trimOp.startMs / 1000.0} -i \"$sourceFilePath\" -t $durationSecs")
+            outputDuration = durationSecs
+            cmd.append("-ss ${trimOp.startMs / 1000.0} -t $durationSecs -i \"$sourceFilePath\"")
         } else {
             cmd.append("-i \"$sourceFilePath\"")
         }
 
         // Build filter_complex for video operations
-        val (videoStages, finalLabel) = buildVideoFilterStages(videoOps, fontFilePath)
+        val (videoStages, finalLabel) = buildVideoFilterStages(videoOps, fontFilePath, offsetMs = offsetMs)
         if (videoStages.isNotEmpty()) {
             cmd.append(" -filter_complex \"${videoStages.joinToString(";")}\"")
             cmd.append(" -map \"$finalLabel\" -map 0:a?")
@@ -691,6 +771,9 @@ class VideoEditingViewModel : ViewModel() {
 
         // Fast preview settings
         cmd.append(" -c:v libx264 -preset ultrafast -crf 35 -c:a aac")
+        if (outputDuration != null) {
+            cmd.append(" -t $outputDuration")
+        }
         cmd.append(" -y \"$previewOutputPath\"")
 
         val finalCommand = cmd.toString()
