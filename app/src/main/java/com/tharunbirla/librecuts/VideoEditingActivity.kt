@@ -16,6 +16,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.FrameLayout
@@ -35,6 +36,7 @@ import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.ui.StyledPlayerView
+import com.tharunbirla.librecuts.R
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.RangeSlider
@@ -46,6 +48,7 @@ import com.tharunbirla.librecuts.customviews.DraggableTextOverlayView
 import com.tharunbirla.librecuts.customviews.DraggableImageOverlayView
 import com.tharunbirla.librecuts.customviews.ImageOverlayView
 import com.tharunbirla.librecuts.models.EditOperation
+import com.tharunbirla.librecuts.models.VideoProject
 import com.tharunbirla.librecuts.models.TextPosition
 import kotlinx.coroutines.Job
 import com.tharunbirla.librecuts.services.FFmpegRenderEngine
@@ -65,6 +68,13 @@ class VideoEditingActivity : AppCompatActivity() {
     private lateinit var playerView: StyledPlayerView
     private lateinit var tvDuration: TextView
     private lateinit var frameRecyclerView: RecyclerView
+    private lateinit var textTrackContainer: LinearLayout
+    private lateinit var imageTrackContainer: LinearLayout
+    private lateinit var audioTrackContainer: LinearLayout
+
+    private fun Int.dpToPx(): Int {
+        return (this * resources.displayMetrics.density).toInt()
+    }
     private lateinit var customVideoSeeker: CustomVideoSeeker
     private lateinit var loadingScreen: View
     private lateinit var exportScreen: View
@@ -227,6 +237,9 @@ class VideoEditingActivity : AppCompatActivity() {
         loadingScreen = findViewById(R.id.loadingScreen)
         exportScreen = findViewById(R.id.exportScreen)
         lottieAnimationView = findViewById(R.id.lottieAnimation)
+        textTrackContainer = findViewById(R.id.textTrackContainer)
+        imageTrackContainer = findViewById(R.id.imageTrackContainer)
+        audioTrackContainer = findViewById(R.id.audioTrackContainer)
 
         textOverlayView = try {
             findViewById(R.id.textOverlayView)
@@ -246,14 +259,25 @@ class VideoEditingActivity : AppCompatActivity() {
         draggableTextOverlay = try {
             findViewById<DraggableTextOverlayView>(R.id.draggableTextOverlay)?.also { overlay ->
                 overlay.onTextCommitted = { text, fontSize, relX, relY, color ->
-                    viewModel.addTextOperation(
-                        text = text,
-                        fontSize = fontSize,
-                        position = "Center Align",
-                        relativeX = relX,
-                        relativeY = relY,
-                        color = color
-                    )
+                    val selectedId = viewModel.selectedOperationId.value
+                    if (selectedId != null) {
+                        val op = viewModel.project.value?.operations?.find { (it as? EditOperation.AddText)?.id == selectedId } as? EditOperation.AddText
+                        if (op != null) {
+                            viewModel.updateOperation(op.copy(
+                                text = text, fontSize = fontSize, relativeX = relX, relativeY = relY, color = color
+                            ))
+                        }
+                    } else {
+                        viewModel.addTextOperation(
+                            text = text,
+                            fontSize = fontSize,
+                            position = "Center Align",
+                            relativeX = relX,
+                            relativeY = relY,
+                            color = color
+                        )
+                    }
+                    viewModel.selectOperation(null)
                     exitTextEditingMode()
                     renderSegmentedPreview()
                 }
@@ -306,14 +330,25 @@ class VideoEditingActivity : AppCompatActivity() {
         draggableImageOverlay = try {
             findViewById<DraggableImageOverlayView>(R.id.draggableImageOverlay)?.also { overlay ->
                 overlay.onImageCommitted = { uri, relX, relY, relW, relH, rotationAngle ->
-                    viewModel.addImageOverlayOperation(
-                        imageUri = uri,
-                        relativeX = relX,
-                        relativeY = relY,
-                        relativeWidth = relW,
-                        relativeHeight = relH,
-                        rotationAngle = rotationAngle
-                    )
+                    val selectedId = viewModel.selectedOperationId.value
+                    if (selectedId != null) {
+                        val op = viewModel.project.value?.operations?.find { (it as? EditOperation.AddImageOverlay)?.id == selectedId } as? EditOperation.AddImageOverlay
+                        if (op != null) {
+                            viewModel.updateOperation(op.copy(
+                                imageUri = uri, relativeX = relX, relativeY = relY, relativeWidth = relW, relativeHeight = relH, rotationAngle = rotationAngle
+                            ))
+                        }
+                    } else {
+                        viewModel.addImageOverlayOperation(
+                            imageUri = uri,
+                            relativeX = relX,
+                            relativeY = relY,
+                            relativeWidth = relW,
+                            relativeHeight = relH,
+                            rotationAngle = rotationAngle
+                        )
+                    }
+                    viewModel.selectOperation(null)
                     exitImageEditingMode()
                     renderSegmentedPreview()
                 }
@@ -449,6 +484,55 @@ class VideoEditingActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
+            viewModel.selectedOperationId.collect { selectedId ->
+                textOverlayView?.hiddenOperationId = selectedId
+                imageOverlayView?.hiddenOperationId = selectedId
+                
+                val btnDelete = findViewById<View>(R.id.btnDeleteLayer)
+                if (selectedId != null) {
+                    btnDelete?.visibility = View.VISIBLE
+                    btnDelete?.setOnClickListener {
+                        viewModel.deleteOperation(selectedId)
+                        viewModel.selectOperation(null)
+                        draggableTextOverlay?.deactivate()
+                        draggableImageOverlay?.deactivate()
+                        exitTextEditingMode()
+                        exitImageEditingMode()
+                    }
+                    
+                    val op = viewModel.project.value?.operations?.find {
+                        when (it) {
+                            is EditOperation.AddText -> it.id == selectedId
+                            is EditOperation.AddImageOverlay -> it.id == selectedId
+                            is EditOperation.AddBackgroundAudio -> it.id == selectedId
+                            else -> false
+                        }
+                    }
+                    when (op) {
+                        is EditOperation.AddText -> {
+                            draggableTextOverlay?.activateForEdit(op)
+                            enterTextEditingMode(isReEditing = true)
+                        }
+                        is EditOperation.AddImageOverlay -> {
+                            draggableImageOverlay?.activateForEdit(op)
+                            enterImageEditingModeForEdit(op.rotationAngle)
+                        }
+                        else -> {} // Audio track
+                    }
+                } else {
+                    btnDelete?.visibility = View.GONE
+                    draggableTextOverlay?.deactivate()
+                    draggableImageOverlay?.deactivate()
+                    exitTextEditingMode()
+                    exitImageEditingMode()
+                }
+                
+                // Re-render tracks so the selection highlight updates
+                viewModel.project.value?.let { renderTracks(it) }
+            }
+        }
+
+        lifecycleScope.launch {
             viewModel.project.collect { project ->
                 if (project != null) {
                     Log.d(TAG, "Project updated with ${project.getOperationCount()} operations")
@@ -476,6 +560,8 @@ class VideoEditingActivity : AppCompatActivity() {
                     } else {
                         resetCropPreview()
                     }
+                    
+                    renderTracks(project)
                 }
             }
         }
@@ -625,10 +711,12 @@ class VideoEditingActivity : AppCompatActivity() {
         enterTextEditingMode()
     }
 
-    private fun enterTextEditingMode() {
+    private fun enterTextEditingMode(isReEditing: Boolean = false) {
         isTextEditingActive = true
         selectedTextColor = "#FFFFFF"
-        draggableTextOverlay?.activate("", 36)
+        if (!isReEditing) {
+            draggableTextOverlay?.activate("", 36)
+        }
         textEditingToolbar?.visibility = View.VISIBLE
         textEditingToolbar?.let { toolbar ->
             toolbar.findViewById<View>(R.id.colorPickerContainer)?.visibility = View.GONE
@@ -694,6 +782,21 @@ class VideoEditingActivity : AppCompatActivity() {
             val tvValue = toolbar.findViewById<TextView>(R.id.tvImageRotationValue)
             slider?.value = 0f
             tvValue?.text = "0°"
+        }
+        findViewById<LinearLayout>(R.id.editingControlsWrapper)?.visibility = View.GONE
+        if (::player.isInitialized && player.isPlaying) {
+            player.pause()
+        }
+    }
+
+    private fun enterImageEditingModeForEdit(rotation: Float) {
+        isImageEditingActive = true
+        imageEditingToolbar?.visibility = View.VISIBLE
+        imageEditingToolbar?.let { toolbar ->
+            val slider = toolbar.findViewById<Slider>(R.id.imageRotationSlider)
+            val tvValue = toolbar.findViewById<TextView>(R.id.tvImageRotationValue)
+            slider?.value = rotation
+            tvValue?.text = "${rotation.toInt()}°"
         }
         findViewById<LinearLayout>(R.id.editingControlsWrapper)?.visibility = View.GONE
         if (::player.isInitialized && player.isPlaying) {
@@ -929,10 +1032,9 @@ class VideoEditingActivity : AppCompatActivity() {
                 viewModel.addBackgroundAudioOperation(
                     audioUri = tempAudioUri,
                     removeOriginalAudio = replaceOriginal,
-                    delayMs = 0L,
                     volume = volumeSlider.value,
-                    startMs = startMs,
-                    endMs = endMs
+                    internalStartMs = startMs,
+                    internalEndMs = endMs
                 )
                 Toast.makeText(this@VideoEditingActivity, "Background audio added", Toast.LENGTH_SHORT).show()
                 bottomSheet.dismiss()
@@ -1187,6 +1289,7 @@ class VideoEditingActivity : AppCompatActivity() {
                         isVideoLoaded = true
                         customVideoSeeker.setVideoDuration(player.duration)
                         updateDurationDisplay(player.currentPosition.toInt(), player.duration.toInt())
+                        viewModel.project.value?.let { renderTracks(it) }
 
                         val format = player.videoFormat
                         if (format != null && format.width > 0 && format.height > 0) {
@@ -1245,6 +1348,9 @@ class VideoEditingActivity : AppCompatActivity() {
             val progress = currentPos.toFloat() / duration
             customVideoSeeker.setSeekPosition(progress)
             updateDurationDisplay(currentPos.toInt(), duration.toInt())
+            
+            textOverlayView?.currentPositionMs = currentPos
+            imageOverlayView?.currentPositionMs = currentPos
         }
     }
 
@@ -1297,6 +1403,111 @@ class VideoEditingActivity : AppCompatActivity() {
         return filePath
     }
 
+    private fun renderTracks(project: VideoProject) {
+        val duration = if (::player.isInitialized) player.duration else 0L
+        if (duration <= 0L) return
+
+        // Text tracks
+        textTrackContainer.removeAllViews()
+        val textOps = project.operations.filterIsInstance<EditOperation.AddText>()
+        if (textOps.isNotEmpty()) {
+            textTrackContainer.visibility = View.VISIBLE
+            for (op in textOps) {
+                val trackView = com.tharunbirla.librecuts.customviews.TrackTrimView(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 48.dpToPx()).apply {
+                        topMargin = 4.dpToPx()
+                    }
+                    trackColor = android.graphics.Color.parseColor("#E91E63") // Pink for text
+                    trackLabel = op.text
+                    isSelectedTrack = (op.id == viewModel.selectedOperationId.value)
+                    trackIcon = androidx.core.content.ContextCompat.getDrawable(this@VideoEditingActivity, R.drawable.ic_text_24)
+                    onTrackClicked = {
+                        viewModel.selectOperation(op.id)
+                    }
+                    setRange(duration, op.startTimeMs ?: 0L, op.endTimeMs ?: duration)
+                    onTrimChanged = { start, end ->
+                        viewModel.updateOperation(op.copy(startTimeMs = start, endTimeMs = end))
+                    }
+                }
+                textTrackContainer.addView(trackView)
+            }
+        } else {
+            textTrackContainer.visibility = View.GONE
+        }
+
+        // Image tracks
+        imageTrackContainer.removeAllViews()
+        val imageOps = project.operations.filterIsInstance<EditOperation.AddImageOverlay>()
+        if (imageOps.isNotEmpty()) {
+            imageTrackContainer.visibility = View.VISIBLE
+            for (op in imageOps) {
+                val trackView = com.tharunbirla.librecuts.customviews.TrackTrimView(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 48.dpToPx()).apply {
+                        topMargin = 4.dpToPx()
+                    }
+                    trackColor = android.graphics.Color.parseColor("#FF9800") // Orange for image
+                    trackLabel = op.imageUri.lastPathSegment ?: "Image Overlay"
+                    isSelectedTrack = (op.id == viewModel.selectedOperationId.value)
+                    trackIcon = androidx.core.content.ContextCompat.getDrawable(this@VideoEditingActivity, R.drawable.ic_image_24)
+                    onTrackClicked = {
+                        viewModel.selectOperation(op.id)
+                    }
+                    setRange(duration, op.startTimeMs ?: 0L, op.endTimeMs ?: duration)
+                    onTrimChanged = { start, end ->
+                        viewModel.updateOperation(op.copy(startTimeMs = start, endTimeMs = end))
+                    }
+                    
+                    val viewRef = this
+                    lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        val path = getFilePathFromUri(op.imageUri)
+                        if (path != null) {
+                            try {
+                                val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = 8 }
+                                val bitmap = android.graphics.BitmapFactory.decodeFile(path, options)
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    viewRef.trackThumbnail = bitmap
+                                    viewRef.invalidate()
+                                }
+                            } catch (e: Exception) {}
+                        }
+                    }
+                }
+                imageTrackContainer.addView(trackView)
+            }
+        } else {
+            imageTrackContainer.visibility = View.GONE
+        }
+
+        // Audio tracks
+        audioTrackContainer.removeAllViews()
+        val audioOps = project.operations.filterIsInstance<EditOperation.AddBackgroundAudio>()
+        if (audioOps.isNotEmpty()) {
+            audioTrackContainer.visibility = View.VISIBLE
+            for (op in audioOps) {
+                val trackView = com.tharunbirla.librecuts.customviews.TrackTrimView(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 48.dpToPx()).apply {
+                        topMargin = 4.dpToPx()
+                    }
+                    trackColor = android.graphics.Color.parseColor("#4CAF50") // Green for audio
+                    trackLabel = op.audioUri.lastPathSegment ?: "Audio Track"
+                    isAudioTrack = true
+                    isSelectedTrack = (op.id == viewModel.selectedOperationId.value)
+                    trackIcon = androidx.core.content.ContextCompat.getDrawable(this@VideoEditingActivity, R.drawable.ic_audio_24)
+                    onTrackClicked = {
+                        viewModel.selectOperation(op.id)
+                    }
+                    setRange(duration, op.startTimeMs ?: 0L, op.endTimeMs ?: duration)
+                    onTrimChanged = { start, end ->
+                        viewModel.updateOperation(op.copy(startTimeMs = start, endTimeMs = end))
+                    }
+                }
+                audioTrackContainer.addView(trackView)
+            }
+        } else {
+            audioTrackContainer.visibility = View.GONE
+        }
+    }
+
     private fun setupCustomSeeker() {
         customVideoSeeker.onSeekListener = { seekPosition ->
             // Dismiss preview when user manually seeks
@@ -1306,6 +1517,9 @@ class VideoEditingActivity : AppCompatActivity() {
             if (newSeekTime >= 0 && newSeekTime <= player.duration) {
                 player.seekTo(newSeekTime)
                 updateDurationDisplay(newSeekTime.toInt(), player.duration.toInt())
+                
+                textOverlayView?.currentPositionMs = newSeekTime
+                imageOverlayView?.currentPositionMs = newSeekTime
             } else {
                 Log.d("SeekError", "Seek position out of bounds.")
             }

@@ -162,6 +162,24 @@ class DraggableImageOverlayView @JvmOverloads constructor(
         }
     }
 
+    fun activateForEdit(op: com.tharunbirla.librecuts.models.EditOperation.AddImageOverlay) {
+        isEditingActive = true
+        imageUri = op.imageUri
+        imageAspectRatio = op.relativeWidth / op.relativeHeight
+        relativeX = op.relativeX
+        relativeY = op.relativeY
+        relativeWidth = op.relativeWidth
+        relativeHeight = op.relativeHeight
+        rotationAngle = op.rotationAngle
+
+        imageView.setImageURI(op.imageUri)
+        imageView.rotation = rotationAngle
+        visibility = VISIBLE
+        post {
+            updateImageViewSizeAndPosition()
+        }
+    }
+
     fun deactivate() {
         isEditingActive = false
         visibility = GONE

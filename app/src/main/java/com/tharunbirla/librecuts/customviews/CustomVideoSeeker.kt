@@ -105,15 +105,32 @@ class CustomVideoSeeker @JvmOverloads constructor(
 //        canvas.drawCircle(seekX, handleHeight / 2, 4f, dotPaint)
     }
 
+    private var isDragging = false
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                seekPosition = (event.x / width).coerceIn(0f, 1f)
-                // ONLY invoke with the 0f..1f ratio
-                onSeekListener?.invoke(seekPosition)
-                invalidate()
-                return true
+            MotionEvent.ACTION_DOWN -> {
+                // Only intercept touches at the very top (the handle area)
+                if (event.y <= 120f) {
+                    isDragging = true
+                    seekPosition = (event.x / width).coerceIn(0f, 1f)
+                    onSeekListener?.invoke(seekPosition)
+                    invalidate()
+                    return true
+                }
+                return false // Let the touch fall through to the layers below!
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (isDragging) {
+                    seekPosition = (event.x / width).coerceIn(0f, 1f)
+                    onSeekListener?.invoke(seekPosition)
+                    invalidate()
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                isDragging = false
             }
         }
         return super.onTouchEvent(event)

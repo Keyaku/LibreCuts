@@ -53,6 +53,8 @@ sealed class EditOperation : Serializable {
         val relativeX: Float? = null,
         val relativeY: Float? = null,
         val color: String = "#FFFFFF",
+        val startTimeMs: Long? = null,
+        val endTimeMs: Long? = null,
         val id: String = System.nanoTime().toString()
     ) : EditOperation() {
         init {
@@ -95,16 +97,16 @@ sealed class EditOperation : Serializable {
     data class AddBackgroundAudio(
         val audioUri: Uri,
         val removeOriginalAudio: Boolean = false,
-        val delayMs: Long = 0L,
         val volume: Float = 1.0f,
-        val startMs: Long = 0L,
-        val endMs: Long = -1L,
+        val internalStartMs: Long = 0L,
+        val internalEndMs: Long = -1L,
+        val startTimeMs: Long? = null,
+        val endTimeMs: Long? = null,
         val id: String = System.nanoTime().toString()
     ) : EditOperation() {
         init {
-            require(delayMs >= 0) { "Delay cannot be negative" }
             require(volume in 0f..1f) { "Volume must be in 0.0..1.0" }
-            require(startMs >= 0) { "Start time cannot be negative" }
+            require(internalStartMs >= 0) { "Internal start time cannot be negative" }
         }
     }
 
@@ -119,6 +121,8 @@ sealed class EditOperation : Serializable {
         val relativeWidth: Float,
         val relativeHeight: Float,
         val rotationAngle: Float,
+        val startTimeMs: Long? = null,
+        val endTimeMs: Long? = null,
         val id: String = System.nanoTime().toString()
     ) : EditOperation()
 }

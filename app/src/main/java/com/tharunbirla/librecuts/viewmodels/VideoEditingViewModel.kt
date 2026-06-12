@@ -36,9 +36,11 @@ class VideoEditingViewModel : ViewModel() {
     private val _undoStack = MutableStateFlow<List<VideoProject>>(emptyList())
     private val _redoStack = MutableStateFlow<List<VideoProject>>(emptyList())
     private val _exportQuality = MutableStateFlow(ExportQuality.MEDIUM)
+    private val _selectedOperationId = MutableStateFlow<String?>(null)
 
     val project: StateFlow<VideoProject?> = _project.asStateFlow()
     val uiState: StateFlow<VideoEditingUiState> = _uiState.asStateFlow()
+    val selectedOperationId: StateFlow<String?> = _selectedOperationId.asStateFlow()
     val undoStack: StateFlow<List<VideoProject>> = _undoStack.asStateFlow()
     val redoStack: StateFlow<List<VideoProject>> = _redoStack.asStateFlow()
     val exportQuality: StateFlow<ExportQuality> = _exportQuality.asStateFlow()
@@ -90,10 +92,11 @@ class VideoEditingViewModel : ViewModel() {
     fun addBackgroundAudioOperation(
         audioUri: Uri,
         removeOriginalAudio: Boolean = false,
-        delayMs: Long = 0L,
         volume: Float = 1.0f,
-        startMs: Long = 0L,
-        endMs: Long = -1L
+        internalStartMs: Long = 0L,
+        internalEndMs: Long = -1L,
+        startTimeMs: Long? = null,
+        endTimeMs: Long? = null
     ) {
         if (removeOriginalAudio) {
             _project.update { it?.removeOperationsOfType(EditOperation.MuteAudio::class.java) }
@@ -101,10 +104,11 @@ class VideoEditingViewModel : ViewModel() {
         addOperation(EditOperation.AddBackgroundAudio(
             audioUri = audioUri,
             removeOriginalAudio = removeOriginalAudio,
-            delayMs = delayMs,
             volume = volume,
-            startMs = startMs,
-            endMs = endMs
+            internalStartMs = internalStartMs,
+            internalEndMs = internalEndMs,
+            startTimeMs = startTimeMs,
+            endTimeMs = endTimeMs
         ))
     }
 
@@ -143,6 +147,64 @@ class VideoEditingViewModel : ViewModel() {
                     canUndo = _undoStack.value.isNotEmpty(),
                     canRedo = false
                 )
+            }
+        }
+    }
+
+    fun updateOperation(updatedOp: EditOperation) {
+        viewModelScope.launch {
+            _project.update { current ->
+                if (current == null) return@update null
+                
+                val ops = current.operations.toMutableList()
+                val index = ops.indexOfFirst {
+                    when {
+                        it is EditOperation.AddText && updatedOp is EditOperation.AddText -> it.id == updatedOp.id
+                        it is EditOperation.AddImageOverlay && updatedOp is EditOperation.AddImageOverlay -> it.id == updatedOp.id
+                        it is EditOperation.AddBackgroundAudio && updatedOp is EditOperation.AddBackgroundAudio -> it.id == updatedOp.id
+                        else -> false
+                    }
+                }
+                
+                if (index != -1) {
+                    _undoStack.value = _undoStack.value + current
+                    _redoStack.value = emptyList()
+                    ops[index] = updatedOp
+                    current.copy(operations = ops)
+                } else {
+                    current
+                }
+            }
+        }
+    }
+
+    fun selectOperation(id: String?) {
+        _selectedOperationId.value = id
+    }
+
+    fun deleteOperation(id: String) {
+        viewModelScope.launch {
+            _project.update { current ->
+                if (current == null) return@update null
+                
+                val ops = current.operations.toMutableList()
+                val index = ops.indexOfFirst {
+                    when (it) {
+                        is EditOperation.AddText -> it.id == id
+                        is EditOperation.AddImageOverlay -> it.id == id
+                        is EditOperation.AddBackgroundAudio -> it.id == id
+                        else -> false
+                    }
+                }
+                
+                if (index != -1) {
+                    _undoStack.value = _undoStack.value + current
+                    _redoStack.value = emptyList()
+                    ops.removeAt(index)
+                    current.copy(operations = ops)
+                } else {
+                    current
+                }
             }
         }
     }
@@ -265,7 +327,19 @@ class VideoEditingViewModel : ViewModel() {
             op.position.ffmpegParam
         }
 
-        return "drawtext=${fontPart}text='$escapedText':fontcolor='${op.color}':fontsize=${op.fontSize}:$positionPart"
+        val enablePart = buildEnableExpr(op.startTimeMs, op.endTimeMs)
+        return "drawtext=${fontPart}text='$escapedText':fontcolor='${op.color}':fontsize=${op.fontSize}:$positionPart$enablePart"
+    }
+
+    private fun buildEnableExpr(startTimeMs: Long?, endTimeMs: Long?): String {
+        if (startTimeMs == null && endTimeMs == null) return ""
+        val startSec = (startTimeMs ?: 0L) / 1000.0
+        return if (endTimeMs != null) {
+            val endSec = endTimeMs / 1000.0
+            ":enable='between(t,$startSec,$endSec)'"
+        } else {
+            ":enable='gte(t,$startSec)'"
+        }
     }
 
     /**
@@ -316,7 +390,8 @@ class VideoEditingViewModel : ViewModel() {
                         // Rotate image (c=none preserves transparent background)
                         stages.add("${scaledImgLabel}rotate=$radians:c=none $rotatedImgLabel")
                         // Overlay image on the reference video
-                        stages.add("$refVidLabel$rotatedImgLabel overlay=x=(W*${op.relativeX})-(w/2):y=(H*${op.relativeY})-(h/2) $nextLabel")
+                        val enablePart = buildEnableExpr(op.startTimeMs, op.endTimeMs)
+                        stages.add("$refVidLabel$rotatedImgLabel overlay=x=(W*${op.relativeX})-(w/2):y=(H*${op.relativeY})-(h/2)$enablePart $nextLabel")
 
                         currentLabel = nextLabel
                         stageIndex++
@@ -483,18 +558,30 @@ class VideoEditingViewModel : ViewModel() {
                 val trackLabel = "[a$idx]"
                 val filters = mutableListOf<String>()
 
-                if (audioOp.startMs > 0L || audioOp.endMs > 0L) {
-                    val startSec = audioOp.startMs / 1000.0
-                    if (audioOp.endMs > 0L) {
-                        val endSec = audioOp.endMs / 1000.0
-                        filters.add("atrim=start=$startSec:end=$endSec,asetpts=PTS-STARTPTS")
-                    } else {
-                        filters.add("atrim=start=$startSec,asetpts=PTS-STARTPTS")
+                val internalStartSec = audioOp.internalStartMs / 1000.0
+                var internalEndSec = if (audioOp.internalEndMs > 0L) audioOp.internalEndMs / 1000.0 else Double.MAX_VALUE
+
+                if (audioOp.startTimeMs != null && audioOp.endTimeMs != null) {
+                    val timelineDurationSec = (audioOp.endTimeMs - audioOp.startTimeMs) / 1000.0
+                    val maxEndSec = internalStartSec + timelineDurationSec
+                    if (maxEndSec < internalEndSec) {
+                        internalEndSec = maxEndSec
                     }
                 }
-                if (audioOp.delayMs > 0) {
-                    filters.add("adelay=${audioOp.delayMs}|${audioOp.delayMs}")
+
+                if (internalStartSec > 0.0 || internalEndSec != Double.MAX_VALUE) {
+                    if (internalEndSec != Double.MAX_VALUE) {
+                        filters.add("atrim=start=$internalStartSec:end=$internalEndSec,asetpts=PTS-STARTPTS")
+                    } else {
+                        filters.add("atrim=start=$internalStartSec,asetpts=PTS-STARTPTS")
+                    }
                 }
+                
+                val delayMs = audioOp.startTimeMs ?: 0L
+                if (delayMs > 0) {
+                    filters.add("adelay=$delayMs|$delayMs")
+                }
+                
                 if (audioOp.volume < 1.0f) {
                     filters.add("volume=${audioOp.volume}")
                 }

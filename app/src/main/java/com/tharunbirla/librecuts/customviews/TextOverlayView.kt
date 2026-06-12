@@ -29,6 +29,16 @@ class TextOverlayView @JvmOverloads constructor(
     private var textOperations: List<EditOperation.AddText> = emptyList()
     private var videoWidth = 0
     private var videoHeight = 0
+    var currentPositionMs: Long = 0L
+        set(value) {
+            field = value
+            invalidate()
+        }
+    var hiddenOperationId: String? = null
+        set(value) {
+            field = value
+            invalidate()
+        }
 
     fun setTextOperations(operations: List<EditOperation.AddText>) {
         this.textOperations = operations
@@ -70,6 +80,11 @@ class TextOverlayView @JvmOverloads constructor(
         val scale = if (videoHeight > 0) videoRect.height() / videoHeight.toFloat() else 1f
 
         for (textOp in textOperations) {
+            if (textOp.id == hiddenOperationId) continue
+            val start = textOp.startTimeMs ?: 0L
+            val end = textOp.endTimeMs ?: Long.MAX_VALUE
+            if (currentPositionMs < start || currentPositionMs > end) continue
+
             paint.textSize = textOp.fontSize * scale
             try {
                 paint.color = Color.parseColor(textOp.color)

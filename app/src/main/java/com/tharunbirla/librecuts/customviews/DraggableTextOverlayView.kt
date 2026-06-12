@@ -196,6 +196,29 @@ class DraggableTextOverlayView @JvmOverloads constructor(
         }
     }
 
+    /** Activate for re-editing an existing text operation. */
+    fun activateForEdit(op: com.tharunbirla.librecuts.models.EditOperation.AddText) {
+        isEditingActive = true
+        currentFontSize = op.fontSize
+        relativeX = op.relativeX ?: 0.5f
+        relativeY = op.relativeY ?: 0.5f
+        currentColorString = op.color
+
+        editText.setText(op.text)
+        try {
+            editText.setTextColor(Color.parseColor(op.color))
+        } catch (e: Exception) {
+            editText.setTextColor(Color.WHITE)
+        }
+        updateFontSizeOnScreen()
+        visibility = VISIBLE
+
+        post {
+            positionEditTextFromRelative()
+            editText.requestFocus()
+        }
+    }
+
     /** Deactivate and hide the text editor. */
     fun deactivate() {
         isEditingActive = false

@@ -23,6 +23,16 @@ class ImageOverlayView @JvmOverloads constructor(
     
     private var videoWidth = 0
     private var videoHeight = 0
+    var currentPositionMs: Long = 0L
+        set(value) {
+            field = value
+            invalidate()
+        }
+    var hiddenOperationId: String? = null
+        set(value) {
+            field = value
+            invalidate()
+        }
 
     fun setImageOperations(operations: List<EditOperation.AddImageOverlay>) {
         this.imageOperations = operations
@@ -84,6 +94,11 @@ class ImageOverlayView @JvmOverloads constructor(
         val videoRect = getVideoRect()
 
         for (op in imageOperations) {
+            if (op.id == hiddenOperationId) continue
+            val start = op.startTimeMs ?: 0L
+            val end = op.endTimeMs ?: Long.MAX_VALUE
+            if (currentPositionMs < start || currentPositionMs > end) continue
+
             val bitmap = bitmapCache[op.imageUri.toString()] ?: continue
             
             // Width and height of image in screen coordinates
