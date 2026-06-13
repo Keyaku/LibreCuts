@@ -1,8 +1,8 @@
 <resources>
 
     <!-- Base application theme -->
-    <style name="AppTheme" parent="Theme.Material3.Dark">
-        <item name="colorPrimary">@color/colorOnSecondary</item>
+    <style name="AppTheme" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryVariant">@color/colorPrimaryVariant</item>
         <item name="colorOnPrimary">@color/colorOnPrimary</item>
         <item name="colorSecondary">@color/colorSecondary</item>
@@ -12,12 +12,14 @@
         <item name="android:textColor">@color/textColor</item>
         <item name="android:navigationBarColor">@color/navigationBarColor</item>
         <item name="android:statusBarColor">@color/statusBarColor</item>
+        <!-- Modern transitions -->
+        <item name="android:windowActivityTransitions">true</item>
     </style>
 
     <style name="Editor" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorBackground">@color/colorPrimary</item>
+        <item name="colorBackground">@color/background</item>
         <item name="shapeAppearanceOverlay">@style/DialogShapeAppearance</item> <!-- Custom shape -->
-        <item name="colorPrimary">@color/colorOnSecondary</item>
+        <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryVariant">@color/colorPrimaryVariant</item>
         <item name="colorOnPrimary">@color/colorOnPrimary</item>
         <item name="colorSecondary">@color/colorSecondary</item>
@@ -31,7 +33,7 @@
 
     <style name="DialogShapeAppearance" parent="">
         <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">16dp</item>
+        <item name="cornerSize">24dp</item>
     </style>
 
 </resources>

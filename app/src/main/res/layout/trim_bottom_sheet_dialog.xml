@@ -4,50 +4,61 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="20dp"
-    android:background="#121212">
+    android:padding="24dp"
+    android:background="@color/surfaceContainer">
 
     <!-- Handle indicator on top of bottom sheet -->
     <View
         android:layout_width="40dp"
         android:layout_height="4dp"
-        android:background="#444444"
+        android:background="@drawable/rounded_button_dark"
         android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="16dp"
-        android:backgroundTint="#444444"/>
+        android:layout_marginBottom="24dp"
+        android:backgroundTint="@color/outline" />
 
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="16dp">
+        
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Trim Video"
+            android:textSize="18sp"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/textColor"
+            android:layout_centerVertical="true" />
 
         <ImageButton
             android:id="@+id/btnCloseTrimSheet"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:src="@drawable/ic_close_24"
             android:background="?attr/selectableItemBackgroundBorderless"
-            app:tint="@android:color/white"
+            app:tint="@color/iconSecondary"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true" />
     </RelativeLayout>
 
-        <TextView
-            android:id="@+id/tvTrimDuration"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="00:00 - 00:00 (00:00)"
-            android:textSize="15sp"
-            android:textStyle="bold"
-            android:textColor="@android:color/white"
-            android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="20dp" />
+    <TextView
+        android:id="@+id/tvTrimDuration"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="00:00 - 00:00 (00:00)"
+        android:textSize="14sp"
+        android:fontFamily="sans-serif-medium"
+        android:textColor="@color/colorPrimary"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="24dp" />
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="72dp"
-        android:layout_marginBottom="24dp"
-        android:background="#1E1E1E">
+        android:layout_marginBottom="32dp"
+        android:background="@color/surfaceContainerHigh"
+        android:clipToOutline="true"
+        android:outlineProvider="background">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/trimRecyclerView"
@@ -62,16 +73,17 @@
             android:layout_height="match_parent" />
     </FrameLayout>
 
-    <Button
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btnDoneTrim"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="56dp"
         android:text="Done"
-        android:textColor="@android:color/white"
-        android:textSize="16sp"
+        android:textColor="@color/onPrimaryContainer"
+        android:textSize="15sp"
         android:textStyle="bold"
         android:backgroundTint="@color/colorPrimary"
-        android:paddingVertical="12dp"
-        app:cornerRadius="12dp" />
+        app:cornerRadius="16dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp" />
 
 </LinearLayout>

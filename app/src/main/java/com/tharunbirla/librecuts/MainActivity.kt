@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tharunbirla.librecuts.databinding.ActivityMainBinding
 import com.tharunbirla.librecuts.utils.ErrorCode
+import com.tharunbirla.librecuts.utils.setBounceClickListener
 
 class MainActivity : AppCompatActivity() {
 
@@ -40,7 +41,7 @@ class MainActivity : AppCompatActivity() {
         setupPermissions()
         setupGlobalCrashHandler()
 
-        binding.addVideoButton.setOnClickListener {
+        binding.btnImport.setBounceClickListener {
             if (arePermissionsGranted()) {
                 Log.d("ButtonClick", "Permissions granted, launching video selection.")
                 selectVideo()
@@ -58,20 +59,20 @@ class MainActivity : AppCompatActivity() {
         binding.tabAbout.background = inactiveBg
 
         // Setup bottom navigation tab switching
-        binding.tabHome.setOnClickListener {
+        binding.tabHome.setBounceClickListener {
             switchTab(true)
         }
 
-        binding.tabAbout.setOnClickListener {
+        binding.tabAbout.setBounceClickListener {
             switchTab(false)
         }
 
         // Setup GitHub button listeners
-        binding.btnStarGithub.setOnClickListener {
+        binding.btnStarGithub.setBounceClickListener {
             openUrl("https://github.com/tharunbirla/LibreCuts")
         }
 
-        binding.btnReportBug.setOnClickListener {
+        binding.btnReportBug.setBounceClickListener {
             openUrl("https://github.com/tharunbirla/LibreCuts/issues")
         }
     }

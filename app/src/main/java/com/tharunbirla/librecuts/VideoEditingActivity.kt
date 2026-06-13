@@ -12,6 +12,9 @@ import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
+import com.tharunbirla.librecuts.utils.setBounceClickListener
+import com.tharunbirla.librecuts.utils.performHapticLight
+import com.tharunbirla.librecuts.utils.performHapticClick
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
@@ -188,7 +191,7 @@ class VideoEditingActivity : AppCompatActivity() {
         observeViewModelState()
 
         // Play/Pause button logic
-        btnPlayPause.setOnClickListener {
+        btnPlayPause.setBounceClickListener {
             if (::player.isInitialized && isVideoLoaded) {
                 if (player.isPlaying) {
                     player.pause()
@@ -211,7 +214,7 @@ class VideoEditingActivity : AppCompatActivity() {
 
         // Mute/Unmute button logic (icon only, no function yet)
         val btnMute = findViewById<ImageButton>(R.id.btnMute)
-        btnMute.setOnClickListener {
+        btnMute.setBounceClickListener {
             if (::player.isInitialized) {
                 val isCurrentlyMuted = player.volume == 0f
                 if (isCurrentlyMuted) {
@@ -396,12 +399,12 @@ class VideoEditingActivity : AppCompatActivity() {
 
         textEditingToolbar = try {
             findViewById<View>(R.id.textEditingToolbar)?.also { toolbar ->
-                toolbar.findViewById<ImageButton>(R.id.btnTextCancel)?.setOnClickListener {
+                toolbar.findViewById<ImageButton>(R.id.btnTextCancel)?.setBounceClickListener {
                     draggableTextOverlay?.deactivate()
                     viewModel.selectOperation(null)
                     exitTextEditingMode()
                 }
-                toolbar.findViewById<View>(R.id.btnTextDone)?.setOnClickListener {
+                toolbar.findViewById<View>(R.id.btnTextDone)?.setBounceClickListener {
                     draggableTextOverlay?.commitText()
                 }
 
@@ -409,14 +412,14 @@ class VideoEditingActivity : AppCompatActivity() {
                 val btnPalette = toolbar.findViewById<ImageButton>(R.id.btnTextPaletteTab)
                 val colorContainer = toolbar.findViewById<View>(R.id.colorPickerContainer)
 
-                btnKeyboard?.setOnClickListener {
+                btnKeyboard?.setBounceClickListener {
                     colorContainer?.visibility = View.GONE
                     btnKeyboard.setColorFilter(getColor(R.color.colorPrimary))
                     btnPalette?.setColorFilter(getColor(R.color.toolTextInactive))
                     draggableTextOverlay?.requestEditingFocus()
                 }
 
-                btnPalette?.setOnClickListener {
+                btnPalette?.setBounceClickListener {
                     val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                     imm.hideSoftInputFromWindow(toolbar.windowToken, 0)
 
@@ -471,12 +474,12 @@ class VideoEditingActivity : AppCompatActivity() {
 
         imageEditingToolbar = try {
             findViewById<View>(R.id.imageEditingToolbar)?.also { toolbar ->
-                toolbar.findViewById<ImageButton>(R.id.btnImageCancel)?.setOnClickListener {
+                toolbar.findViewById<ImageButton>(R.id.btnImageCancel)?.setBounceClickListener {
                     draggableImageOverlay?.deactivate()
                     viewModel.selectOperation(null)
                     exitImageEditingMode()
                 }
-                toolbar.findViewById<View>(R.id.btnImageDone)?.setOnClickListener {
+                toolbar.findViewById<View>(R.id.btnImageDone)?.setBounceClickListener {
                     draggableImageOverlay?.commitImage()
                 }
                 val slider = toolbar.findViewById<Slider>(R.id.imageRotationSlider)
@@ -491,7 +494,7 @@ class VideoEditingActivity : AppCompatActivity() {
             null
         }
 
-        findViewById<ImageButton>(R.id.btnHome).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnHome).setBounceClickListener {
             onBackPressedDispatcher.onBackPressed()
         }
 
@@ -502,32 +505,32 @@ class VideoEditingActivity : AppCompatActivity() {
         btnDeleteLayer = findViewById(R.id.btnDeleteLayer)
         tvPreviewBadge = findViewById(R.id.tvPreviewBadge)
 
-        btnSaveText.setOnClickListener {
+        btnSaveText.setBounceClickListener {
             saveAction()
         }
 
-        btnSaveDropdown.setOnClickListener {
+        btnSaveDropdown.setBounceClickListener {
             showQualitySettingsDialog()
         }
 
         // Tool Buttons with proper scoping
-        findViewById<ImageButton>(R.id.btnText).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnText).setBounceClickListener {
             setActiveToolButton(R.id.btnText)
             textAction()
         }
-        findViewById<ImageButton>(R.id.btnImageOverlay).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnImageOverlay).setBounceClickListener {
             setActiveToolButton(R.id.btnImageOverlay)
             imageOverlayAction()
         }
-        findViewById<ImageButton>(R.id.btnAudio).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnAudio).setBounceClickListener {
             setActiveToolButton(R.id.btnAudio)
             audioAction()
         }
-        findViewById<ImageButton>(R.id.btnCrop).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnCrop).setBounceClickListener {
             setActiveToolButton(R.id.btnCrop)
             cropAction()
         }
-        findViewById<ImageButton>(R.id.btnMerge).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnMerge).setBounceClickListener {
             setActiveToolButton(R.id.btnMerge)
             mergeAction()
         }
@@ -536,15 +539,15 @@ class VideoEditingActivity : AppCompatActivity() {
             btnUndo = findViewById(R.id.btnUndo)
             btnRedo = findViewById(R.id.btnRedo)
             btnPreview = findViewById(R.id.btnPreview)
-            btnUndo.setOnClickListener {
+            btnUndo.setBounceClickListener {
                 if (isShowingPreview) dismissPreview()
                 viewModel.undo()
             }
-            btnRedo.setOnClickListener {
+            btnRedo.setBounceClickListener {
                 if (isShowingPreview) dismissPreview()
                 viewModel.redo()
             }
-            btnPreview.setOnClickListener {
+            btnPreview.setBounceClickListener {
                 if (isShowingPreview) {
                     dismissPreview()
                 } else {
@@ -658,7 +661,7 @@ class VideoEditingActivity : AppCompatActivity() {
                 
                 if (selectedId != null) {
                     btnDeleteLayer?.visibility = View.VISIBLE
-                    btnDeleteLayer?.setOnClickListener {
+                    btnDeleteLayer?.setBounceClickListener {
                         viewModel.deleteOperation(selectedId)
                         viewModel.selectOperation(null)
                         draggableTextOverlay?.deactivate()
@@ -847,25 +850,25 @@ class VideoEditingActivity : AppCompatActivity() {
         updateActiveUi(currentRatio)
 
         // 3. Click Listeners
-        sheetView.findViewById<LinearLayout>(R.id.frameAspectRatio1).setOnClickListener {
+        sheetView.findViewById<LinearLayout>(R.id.frameAspectRatio1).setBounceClickListener {
             viewModel.addCropOperation("16:9")
             updateActiveUi("16:9")
             bottomSheetDialog.dismiss()
         }
 
-        sheetView.findViewById<LinearLayout>(R.id.frameAspectRatio2).setOnClickListener {
+        sheetView.findViewById<LinearLayout>(R.id.frameAspectRatio2).setBounceClickListener {
             viewModel.addCropOperation("9:16")
             updateActiveUi("9:16")
             bottomSheetDialog.dismiss()
         }
 
-        sheetView.findViewById<LinearLayout>(R.id.frameAspectRatio3).setOnClickListener {
+        sheetView.findViewById<LinearLayout>(R.id.frameAspectRatio3).setBounceClickListener {
             viewModel.addCropOperation("1:1")
             updateActiveUi("1:1")
             bottomSheetDialog.dismiss()
         }
 
-        sheetView.findViewById<ImageButton>(R.id.btnCloseSheet).setOnClickListener {
+        sheetView.findViewById<ImageButton>(R.id.btnCloseSheet).setBounceClickListener {
             bottomSheetDialog.dismiss()
         }
 
@@ -1186,7 +1189,7 @@ class VideoEditingActivity : AppCompatActivity() {
                 handler.post(checkPlayback)
             }
 
-            btnPlayPause.setOnClickListener {
+            btnPlayPause.setBounceClickListener {
                 if (isPlaying) {
                     stopPlayback()
                 } else {
@@ -1232,11 +1235,11 @@ class VideoEditingActivity : AppCompatActivity() {
                 mediaPlayer?.setVolume(value, value)
             }
 
-            btnClose.setOnClickListener {
+            btnClose.setBounceClickListener {
                 bottomSheet.dismiss()
             }
 
-            btnDone.setOnClickListener {
+            btnDone.setBounceClickListener {
                 stopPlayback()
                 val replaceOriginal = switchReplace?.isChecked ?: false
                 val start = getGlobalPosition()
@@ -1423,28 +1426,28 @@ class VideoEditingActivity : AppCompatActivity() {
         val currentQuality = viewModel.exportQuality.value
         updateSelection(currentQuality)
 
-        layoutHigh.setOnClickListener {
+        layoutHigh.setBounceClickListener {
             viewModel.setExportQuality(com.tharunbirla.librecuts.viewmodels.ExportQuality.HIGH)
             updateSelection(com.tharunbirla.librecuts.viewmodels.ExportQuality.HIGH)
             Toast.makeText(this, "Export quality set to High", Toast.LENGTH_SHORT).show()
             bottomSheetDialog.dismiss()
         }
 
-        layoutMedium.setOnClickListener {
+        layoutMedium.setBounceClickListener {
             viewModel.setExportQuality(com.tharunbirla.librecuts.viewmodels.ExportQuality.MEDIUM)
             updateSelection(com.tharunbirla.librecuts.viewmodels.ExportQuality.MEDIUM)
             Toast.makeText(this, "Export quality set to Medium", Toast.LENGTH_SHORT).show()
             bottomSheetDialog.dismiss()
         }
 
-        layoutLow.setOnClickListener {
+        layoutLow.setBounceClickListener {
             viewModel.setExportQuality(com.tharunbirla.librecuts.viewmodels.ExportQuality.LOW)
             updateSelection(com.tharunbirla.librecuts.viewmodels.ExportQuality.LOW)
             Toast.makeText(this, "Export quality set to Low", Toast.LENGTH_SHORT).show()
             bottomSheetDialog.dismiss()
         }
 
-        btnClose.setOnClickListener {
+        btnClose.setBounceClickListener {
             bottomSheetDialog.dismiss()
         }
 
@@ -1845,7 +1848,7 @@ class VideoEditingActivity : AppCompatActivity() {
                 showVideoSegmentTrimDialog(index, item)
             }
             
-            segmentView.setOnClickListener {
+            segmentView.setBounceClickListener {
                 showVideoSegmentTrimDialog(index, item)
             }
             segmentView.setOnLongClickListener {
@@ -1860,8 +1863,8 @@ class VideoEditingActivity : AppCompatActivity() {
                 btnLeft.visibility = View.VISIBLE
                 btnRight.visibility = if (index < sequenceItems.size - 1) View.VISIBLE else View.GONE
                 
-                btnLeft.setOnClickListener { viewModel.reorderMergeVideo(index - 1, moveForward = true) }
-                btnRight.setOnClickListener { viewModel.reorderMergeVideo(index - 1, moveForward = false) }
+                btnLeft.setBounceClickListener { viewModel.reorderMergeVideo(index - 1, moveForward = true) }
+                btnRight.setBounceClickListener { viewModel.reorderMergeVideo(index - 1, moveForward = false) }
             } else {
                 // Source video cannot be reordered from here
                 btnLeft.visibility = View.GONE
@@ -2108,7 +2111,7 @@ class VideoEditingActivity : AppCompatActivity() {
             updateTimeText(start, end)
         }
 
-        btnDone.setOnClickListener {
+        btnDone.setBounceClickListener {
             if (index == 0) {
                 viewModel.updateMainVideoTrim(currentStart, currentEnd)
             } else {
@@ -2117,7 +2120,7 @@ class VideoEditingActivity : AppCompatActivity() {
             bottomSheet.dismiss()
         }
 
-        btnClose.setOnClickListener {
+        btnClose.setBounceClickListener {
             bottomSheet.dismiss()
         }
 
@@ -2466,7 +2469,7 @@ class VideoEditingActivity : AppCompatActivity() {
                 }
                 background = shape
 
-                setOnClickListener {
+                setBounceClickListener {
                     selectedTextColor = colorHex
                     draggableTextOverlay?.setTextColor(colorHex)
                     setupColorPicker(toolbar)

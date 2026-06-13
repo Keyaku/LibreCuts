@@ -3,20 +3,20 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/surfaceContainerHigh"
+    android:background="@color/surfaceContainer"
     android:orientation="vertical"
     android:paddingHorizontal="24dp"
     android:paddingBottom="48dp"
-    android:paddingTop="12dp">
+    android:paddingTop="24dp">
 
     <!-- Drag Handle -->
     <View
-        android:layout_width="32dp"
+        android:layout_width="40dp"
         android:layout_height="4dp"
         android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="16dp"
-        android:alpha="0.4"
-        android:background="@color/outlineVariant" />
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/rounded_button_dark"
+        android:backgroundTint="@color/outline" />
 
     <!-- Title and Cancel -->
     <RelativeLayout

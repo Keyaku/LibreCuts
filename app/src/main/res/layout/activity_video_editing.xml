@@ -343,12 +343,15 @@
             android:id="@+id/editingControlsWrapper"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginBottom="24dp"
+            android:layout_marginTop="16dp"
             android:orientation="horizontal"
             android:gravity="center"
-            android:background="@color/navigationBarColor"
-            android:paddingTop="8dp"
-            android:paddingBottom="24dp"
-            android:paddingHorizontal="8dp">
+            android:background="@drawable/bg_bottom_nav_floating"
+            android:paddingVertical="12dp"
+            android:paddingHorizontal="8dp"
+            android:elevation="12dp">
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -366,8 +369,10 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
                     android:text="Text"
                     android:textSize="11sp"
+                    android:fontFamily="sans-serif-medium"
                     android:textColor="@color/toolTextInactive"/>
             </LinearLayout>
 
@@ -387,8 +392,10 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
                     android:text="Stickers"
                     android:textSize="11sp"
+                    android:fontFamily="sans-serif-medium"
                     android:textColor="@color/toolTextInactive"/>
             </LinearLayout>
 
@@ -408,8 +415,10 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
                     android:text="Audio"
                     android:textSize="11sp"
+                    android:fontFamily="sans-serif-medium"
                     android:textColor="@color/toolTextInactive"/>
             </LinearLayout>
 
@@ -429,8 +438,10 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
                     android:text="Crop"
                     android:textSize="11sp"
+                    android:fontFamily="sans-serif-medium"
                     android:textColor="@color/toolTextInactive"/>
             </LinearLayout>
 
@@ -450,8 +461,10 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
                     android:text="Add"
                     android:textSize="11sp"
+                    android:fontFamily="sans-serif-medium"
                     android:textColor="@color/toolTextInactive"/>
             </LinearLayout>
         </LinearLayout>
