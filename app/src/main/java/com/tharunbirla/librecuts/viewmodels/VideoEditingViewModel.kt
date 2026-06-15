@@ -20,8 +20,8 @@ import java.io.FileOutputStream
 import java.io.InputStream
 
 enum class ExportQuality(val crf: Int, val preset: String, val label: String) {
-    HIGH(22, "medium", "High Quality"),
-    MEDIUM(28, "faster", "Medium Quality"),
+    HIGH(22, "veryfast", "High Quality"),
+    MEDIUM(28, "superfast", "Medium Quality"),
     LOW(34, "ultrafast", "Low Quality")
 }
 
@@ -170,6 +170,84 @@ class VideoEditingViewModel : ViewModel() {
         }
     }
 
+    fun splitVideoSegment(index: Int, localSplitTimeMs: Long, sourceUri: Uri, sourceDuration: Long) {
+        viewModelScope.launch {
+            _project.update { current ->
+                if (current == null) return@update null
+                val ops = current.operations.toMutableList()
+                
+                if (index == 0) {
+                    // Split the main video
+                    val trimIndex = ops.indexOfFirst { it is EditOperation.Trim }
+                    val currentTrim = if (trimIndex != -1) ops[trimIndex] as EditOperation.Trim else EditOperation.Trim(0L, sourceDuration)
+                    val oldEndMs = currentTrim.endMs
+                    
+                    // 1. Update existing Trim to end at localSplitTimeMs
+                    if (trimIndex != -1) {
+                        ops[trimIndex] = currentTrim.copy(endMs = localSplitTimeMs)
+                    } else {
+                        ops.add(0, EditOperation.Trim(currentTrim.startMs, localSplitTimeMs))
+                    }
+                    
+                    // 2. Create new MergeItem for the second half
+                    val newMergeItem = EditOperation.MergeItem(
+                        uri = sourceUri,
+                        durationMs = sourceDuration,
+                        trimStartMs = localSplitTimeMs,
+                        trimEndMs = oldEndMs
+                    )
+                    
+                    // 3. Insert into Merge operation at the beginning
+                    val mergeIdx = ops.indexOfFirst { it is EditOperation.Merge }
+                    if (mergeIdx != -1) {
+                        val mergeOp = ops[mergeIdx] as EditOperation.Merge
+                        val items = mergeOp.items.toMutableList()
+                        items.add(0, newMergeItem)
+                        ops[mergeIdx] = mergeOp.copy(items = items)
+                    } else {
+                        ops.add(EditOperation.Merge(listOf(newMergeItem)))
+                    }
+                } else {
+                    // Split a merged video (index > 0)
+                    val mergeIdx = ops.indexOfFirst { it is EditOperation.Merge }
+                    if (mergeIdx != -1) {
+                        val mergeOp = ops[mergeIdx] as EditOperation.Merge
+                        val items = mergeOp.items.toMutableList()
+                        val itemIndex = index - 1
+                        
+                        if (itemIndex >= 0 && itemIndex < items.size) {
+                            val targetItem = items[itemIndex]
+                            val oldEndMs = targetItem.trimEndMs
+                            
+                            // 1. Update the existing MergeItem
+                            items[itemIndex] = targetItem.copy(trimEndMs = localSplitTimeMs)
+                            
+                            // 2. Insert the new MergeItem
+                            val newMergeItem = targetItem.copy(
+                                trimStartMs = localSplitTimeMs,
+                                trimEndMs = oldEndMs
+                            )
+                            items.add(itemIndex + 1, newMergeItem)
+                            
+                            ops[mergeIdx] = mergeOp.copy(items = items)
+                        }
+                    }
+                }
+
+                _undoStack.value = _undoStack.value + current
+                _redoStack.value = emptyList()
+                current.copy(operations = ops)
+            }
+            updateUiState { state ->
+                state.copy(
+                    pendingOperationCount = _project.value?.getOperationCount() ?: 0,
+                    canUndo = _undoStack.value.isNotEmpty(),
+                    canRedo = false
+                )
+            }
+        }
+    }
+
     /** Move the clip at [index] one step earlier (left) or later (right) in the merge list. */
     fun reorderMergeVideo(index: Int, moveForward: Boolean) {
         viewModelScope.launch {
@@ -215,9 +293,14 @@ class VideoEditingViewModel : ViewModel() {
         }
     }
 
+
+
     fun addMuteAudioOperation() {
-        _project.update { it?.removeOperationsOfType(EditOperation.AddBackgroundAudio::class.java) }
         addOperation(EditOperation.MuteAudio())
+    }
+
+    fun addMuteSegmentOperation(index: Int) {
+        addOperation(EditOperation.MuteSegment(index))
     }
 
     fun addBackgroundAudioOperation(
@@ -267,7 +350,7 @@ class VideoEditingViewModel : ViewModel() {
         )
     }
 
-    private fun addOperation(operation: EditOperation) {
+    fun addOperation(operation: EditOperation) {
         viewModelScope.launch {
             _project.update { current ->
                 current?.let {
@@ -407,6 +490,7 @@ class VideoEditingViewModel : ViewModel() {
                                 is EditOperation.AddText -> op.id == operationId
                                 is EditOperation.Merge -> op.id == operationId
                                 is EditOperation.MuteAudio -> op.id == operationId
+                                is EditOperation.MuteSegment -> op.id == operationId
                                 is EditOperation.AddBackgroundAudio -> op.id == operationId
                                 is EditOperation.AddImageOverlay -> op.id == operationId
                             }
@@ -699,6 +783,13 @@ class VideoEditingViewModel : ViewModel() {
                 durationsArray[idx + 1] = (item.trimEndMs - item.trimStartMs) / 1000.0
             }
 
+            val mutedSegments = operations.filterIsInstance<EditOperation.MuteSegment>().map { it.index }
+            for (i in 0 until inputCount) {
+                if (mutedSegments.contains(i)) {
+                    hasAudioArray[i] = false
+                }
+            }
+
             val normTarget = "scale=$mainWidth:$mainHeight:force_original_aspect_ratio=decrease,pad=$mainWidth:$mainHeight:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
 
             for (i in 0 until inputCount) {
@@ -873,7 +964,8 @@ class VideoEditingViewModel : ViewModel() {
             }
 
             // Mix original audio with all background tracks
-            if (hasAudio && !audioInputIndices.any { it.second.removeOriginalAudio }) {
+            val mainVideoMuted = operations.any { it is EditOperation.MuteSegment && it.index == 0 }
+            if (hasAudio && !mainVideoMuted && !audioInputIndices.any { it.second.removeOriginalAudio }) {
                 val allInputs = "[0:a]" + mixInputLabels.joinToString("")
                 val totalInputs = 1 + mixInputLabels.size
                 filterComplexParts.add("${allInputs}amix=inputs=$totalInputs:duration=longest[outa]")

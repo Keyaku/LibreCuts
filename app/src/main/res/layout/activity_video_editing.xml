@@ -200,15 +200,6 @@
                 android:layout_marginBottom="4dp">
 
                 <ImageButton
-                    android:id="@+id/btnDeleteLayer"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@android:color/transparent"
-                    android:src="@drawable/ic_delete_24"
-                    app:tint="@color/colorOnSecondary"
-                    android:visibility="gone" />
-
-                <ImageButton
                     android:id="@+id/btnPlayPause"
                     android:layout_width="40dp"
                     android:layout_height="40dp"
@@ -335,6 +326,30 @@
         <include
             android:id="@+id/imageEditingToolbar"
             layout="@layout/image_editing_toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
+        <!-- Video Editing Toolbar (inline mode, hidden by default) -->
+        <include
+            android:id="@+id/videoEditingToolbar"
+            layout="@layout/video_editing_toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
+        <!-- Audio Editing Toolbar (inline mode, hidden by default) -->
+        <include
+            android:id="@+id/audioEditingToolbar"
+            layout="@layout/audio_editing_toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
+        <!-- Crop Editing Toolbar (inline mode, hidden by default) -->
+        <include
+            android:id="@+id/cropEditingToolbar"
+            layout="@layout/crop_editing_toolbar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:visibility="gone" />

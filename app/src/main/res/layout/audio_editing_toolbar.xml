@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
-    <!-- Rotation Slider Row -->
+    <!-- Volume Slider Row -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="56dp"
@@ -19,27 +19,26 @@
         <ImageView
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:src="@drawable/ic_rotate_right_24"
+            android:src="@drawable/ic_volume_up_24"
             app:tint="@color/iconSecondary" />
 
         <com.google.android.material.slider.Slider
-            android:id="@+id/imageRotationSlider"
+            android:id="@+id/audioVolumeSlider"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:valueFrom="0.0"
-            android:valueTo="360.0"
-            android:value="0.0"
-            android:stepSize="1.0"
+            android:valueTo="1.0"
+            android:value="1.0"
             app:thumbColor="@color/colorPrimary"
             app:trackColorActive="@color/colorPrimary" />
 
         <TextView
-            android:id="@+id/tvImageRotationValue"
+            android:id="@+id/tvAudioVolumeValue"
             android:layout_width="48dp"
             android:layout_height="wrap_content"
             android:gravity="end"
-            android:text="0°"
+            android:text="100%"
             android:textColor="@color/textColor"
             android:textSize="14sp"
             android:fontFamily="sans-serif-medium" />
@@ -58,29 +57,6 @@
         android:paddingHorizontal="8dp"
         android:elevation="12dp">
 
-        <!-- Cancel -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-            <ImageButton
-                android:id="@+id/btnImageCancel"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="@drawable/tool_button_inactive"
-                android:src="@drawable/ic_close_24"
-                app:tint="@color/toolTextInactive" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Cancel"
-                android:textSize="11sp"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/toolTextInactive"/>
-        </LinearLayout>
         <!-- Delete -->
         <LinearLayout
             android:layout_width="0dp"
@@ -89,12 +65,12 @@
             android:orientation="vertical"
             android:gravity="center">
             <ImageButton
-                android:id="@+id/btnImageDelete"
+                android:id="@+id/btnAudioDelete"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="@drawable/tool_button_inactive"
                 android:src="@drawable/ic_delete_24"
-                app:tint="#F44336" />
+                app:tint="@color/colorPrimary" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -102,8 +78,14 @@
                 android:text="Delete"
                 android:textSize="11sp"
                 android:fontFamily="sans-serif-medium"
-                android:textColor="#F44336"/>
+                android:textColor="@color/colorPrimary"/>
         </LinearLayout>
+        
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
+
         <!-- Done -->
         <LinearLayout
             android:layout_width="0dp"
@@ -112,7 +94,7 @@
             android:orientation="vertical"
             android:gravity="center">
             <ImageButton
-                android:id="@+id/btnImageDone"
+                android:id="@+id/btnAudioDone"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="@drawable/tool_button_inactive"

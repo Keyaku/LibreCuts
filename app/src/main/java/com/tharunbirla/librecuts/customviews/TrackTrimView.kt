@@ -23,7 +23,9 @@ class TrackTrimView @JvmOverloads constructor(
     var activeStartMs: Long = 0L
     var activeEndMs: Long = 0L
 
-    var onTrimChanged: ((Long, Long) -> Unit)? = null
+    enum class DragTarget { NONE, LEFT, RIGHT, CENTER }
+
+    var onTrimChanged: ((Long, Long, DragTarget) -> Unit)? = null
     var onTrimAdjusting: ((Long, Long) -> Unit)? = null
     var onTrimAdjustingWithDelta: ((Long, Long, Long, Long) -> Unit)? = null
     var onDragStateChanged: ((Boolean) -> Unit)? = null
@@ -73,7 +75,6 @@ class TrackTrimView @JvmOverloads constructor(
     private val thumbnailRectF = RectF()
     private val handleWidth = 24f
 
-    private enum class DragTarget { NONE, LEFT, RIGHT, CENTER }
     private var dragTarget = DragTarget.NONE
     private var lastTouchX = 0f
     private var downTouchX = 0f
@@ -317,7 +318,7 @@ class TrackTrimView @JvmOverloads constructor(
                         if (!wasDrag && dragTarget == DragTarget.CENTER && event.action == MotionEvent.ACTION_UP) {
                             onTrackClicked?.invoke()
                         } else if (wasDrag) {
-                            onTrimChanged?.invoke(startTimeMs, endTimeMs)
+                            onTrimChanged?.invoke(startTimeMs, endTimeMs, dragTarget)
                         }
                     }
                     dragTarget = DragTarget.NONE

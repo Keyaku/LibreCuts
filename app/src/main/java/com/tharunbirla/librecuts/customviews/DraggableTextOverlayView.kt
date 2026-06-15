@@ -100,17 +100,23 @@ class DraggableTextOverlayView @JvmOverloads constructor(
 
     // ── Selection border paint ────────────────────────────────────────────────
     private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#FF4081")
+        color = Color.parseColor("#FFFFFF")
         style = Paint.Style.STROKE
         strokeWidth = 3f
-        pathEffect = DashPathEffect(floatArrayOf(12f, 6f), 0f)
+        setShadowLayer(4f, 0f, 0f, Color.parseColor("#80000000"))
     }
 
     private val selectionRect = RectF()
 
-    private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#007AFF")
+    private val handleFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#FF2A6D")
         style = Paint.Style.FILL
+    }
+    
+    private val handleStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#FFFFFF")
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
     }
 
     fun setVideoSize(width: Int, height: Int) {
@@ -357,21 +363,29 @@ class DraggableTextOverlayView @JvmOverloads constructor(
         super.dispatchDraw(canvas)
 
         if (isEditingActive && editText.text.isNotEmpty()) {
-            // Draw dashed selection border around the EditText
+            // Draw selection border around the EditText
             selectionRect.set(
                 editText.x - 4f,
                 editText.y - 4f,
                 editText.x + editText.width + 4f,
                 editText.y + editText.height + 4f
             )
-            canvas.drawRoundRect(selectionRect, 8f, 8f, selectionPaint)
+            canvas.drawRect(selectionRect, selectionPaint)
 
             // Draw 4 corner resize handles
-            val handleRadius = 12f
-            canvas.drawCircle(selectionRect.left, selectionRect.top, handleRadius, handlePaint)
-            canvas.drawCircle(selectionRect.right, selectionRect.top, handleRadius, handlePaint)
-            canvas.drawCircle(selectionRect.left, selectionRect.bottom, handleRadius, handlePaint)
-            canvas.drawCircle(selectionRect.right, selectionRect.bottom, handleRadius, handlePaint)
+            val handleRadius = 14f
+            
+            canvas.drawCircle(selectionRect.left, selectionRect.top, handleRadius, handleFillPaint)
+            canvas.drawCircle(selectionRect.left, selectionRect.top, handleRadius, handleStrokePaint)
+            
+            canvas.drawCircle(selectionRect.right, selectionRect.top, handleRadius, handleFillPaint)
+            canvas.drawCircle(selectionRect.right, selectionRect.top, handleRadius, handleStrokePaint)
+            
+            canvas.drawCircle(selectionRect.left, selectionRect.bottom, handleRadius, handleFillPaint)
+            canvas.drawCircle(selectionRect.left, selectionRect.bottom, handleRadius, handleStrokePaint)
+            
+            canvas.drawCircle(selectionRect.right, selectionRect.bottom, handleRadius, handleFillPaint)
+            canvas.drawCircle(selectionRect.right, selectionRect.bottom, handleRadius, handleStrokePaint)
         }
     }
 

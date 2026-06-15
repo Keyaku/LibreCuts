@@ -4,61 +4,87 @@
     android:id="@+id/exportScreen"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black"
-    android:visibility="gone">
+    android:background="#B3000000"
+    android:visibility="gone"
+    android:clickable="true"
+    android:focusable="true">
 
-    <!-- Semi-transparent overlay -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#CC000000" />
+    <!-- Center Card -->
+    <com.google.android.material.card.MaterialCardView
+        android:layout_width="320dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        app:cardCornerRadius="24dp"
+        app:cardBackgroundColor="@color/surfaceContainerHigh"
+        app:cardElevation="16dp"
+        app:strokeWidth="0dp">
 
-    <!-- Center content -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:padding="32dp">
-
-        <!-- Lottie Animation -->
-        <com.airbnb.lottie.LottieAnimationView
-            android:id="@+id/lottieExportAnimation"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            app:lottie_rawRes="@raw/process"
-            app:lottie_autoPlay="true"
-            app:lottie_loop="true"/>
-
-        <!-- Title Text -->
-        <TextView
-            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:text="Exporting Video"
-            android:textAlignment="center"
-            android:textColor="@android:color/white"
-            android:textSize="24sp" />
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="32dp">
 
-        <!-- Subtitle Text -->
-        <TextView
-            android:id="@+id/tvExportMessage"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Processing your edits...\nThis may take a moment"
-            android:textAlignment="center"
-            android:textColor="#CCCCCC"
-            android:textSize="14sp" />
+            <!-- Lottie Animation -->
+            <com.airbnb.lottie.LottieAnimationView
+                android:id="@+id/lottieExportAnimation"
+                android:layout_width="200dp"
+                android:layout_height="200dp"
+                app:lottie_rawRes="@raw/process"
+                app:lottie_autoPlay="true"
+                app:lottie_loop="true"/>
 
-        <!-- Progress indicator -->
-        <ProgressBar
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginTop="24dp"
-            android:indeterminate="true"
-            android:indeterminateTint="@android:color/white" />
+            <!-- Title Text -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Saving video..."
+                android:textColor="@color/textColor"
+                android:fontFamily="sans-serif-medium"
+                android:textSize="20sp" />
 
-    </LinearLayout>
+            <!-- Subtitle Text -->
+            <TextView
+                android:id="@+id/tvExportMessage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Please don't close the app"
+                android:textAlignment="center"
+                android:textColor="@color/outline"
+                android:fontFamily="sans-serif"
+                android:textSize="14sp" />
+
+            <!-- Progress Indicator with Percentage -->
+            <FrameLayout
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:layout_marginTop="24dp">
+                
+                <ProgressBar
+                    android:id="@+id/exportProgressBar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:indeterminate="false"
+                    android:progressDrawable="@drawable/circular_progress_bar"
+                    android:max="100"
+                    android:progress="0" />
+                
+                <TextView
+                    android:id="@+id/tvExportPercentage"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="0%"
+                    android:textColor="@color/colorPrimary"
+                    android:fontFamily="sans-serif-bold"
+                    android:textSize="18sp" />
+            </FrameLayout>
+
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 
 </FrameLayout>

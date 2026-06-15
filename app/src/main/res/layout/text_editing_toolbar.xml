@@ -3,9 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:background="@color/surfaceContainerHigh"
-    android:elevation="4dp">
+    android:orientation="vertical">
 
     <!-- Color Picker Container (Visible in Palette Mode) -->
     <HorizontalScrollView
@@ -13,9 +11,10 @@
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:scrollbars="none"
-        android:background="@color/surfaceContainer"
+        android:layout_marginBottom="8dp"
+        android:layout_marginHorizontal="16dp"
+        android:background="@drawable/bg_bottom_nav_floating"
         android:visibility="gone">
-
         <LinearLayout
             android:id="@+id/colorPickerList"
             android:layout_width="wrap_content"
@@ -28,78 +27,134 @@
     <!-- Toolbar Row -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="24dp"
         android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="16dp">
+        android:gravity="center"
+        android:background="@drawable/bg_bottom_nav_floating"
+        android:paddingVertical="12dp"
+        android:paddingHorizontal="8dp"
+        android:elevation="12dp">
 
-        <!-- Cancel Button -->
-        <ImageButton
-            android:id="@+id/btnTextCancel"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_close_24"
-            android:contentDescription="Cancel text"
-            app:tint="@color/toolTextInactive" />
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-
-        <!-- Modes Tab Container -->
+        <!-- Cancel -->
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
             android:gravity="center">
+            <ImageButton
+                android:id="@+id/btnTextCancel"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_close_24"
+                app:tint="@color/toolTextInactive" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Cancel"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/toolTextInactive"/>
+        </LinearLayout>
 
-            <!-- Keyboard Mode Tab -->
+        <!-- Keyboard -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
             <ImageButton
                 android:id="@+id/btnTextKeyboardTab"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/tool_button_inactive"
                 android:src="@drawable/ic_keyboard_24"
-                android:contentDescription="Keyboard input"
                 app:tint="@color/colorPrimary" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Keyboard"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/colorPrimary"/>
+        </LinearLayout>
 
-            <View
-                android:layout_width="16dp"
-                android:layout_height="match_parent" />
-
-            <!-- Palette Mode Tab -->
+        <!-- Color Palette -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
             <ImageButton
                 android:id="@+id/btnTextPaletteTab"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/tool_button_inactive"
                 android:src="@drawable/ic_palette_24"
-                android:contentDescription="Text color palette"
                 app:tint="@color/toolTextInactive" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Color"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/toolTextInactive"/>
         </LinearLayout>
 
-        <View
+        <!-- Delete -->
+        <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
+            <ImageButton
+                android:id="@+id/btnTextDelete"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_delete_24"
+                app:tint="#F44336" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Delete"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="#F44336"/>
+        </LinearLayout>
 
-        <!-- Done Button -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnTextDone"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="Done"
-            android:textColor="@color/onPrimaryContainer"
-            android:backgroundTint="@color/primaryContainer"
-            app:cornerRadius="18dp"
-            android:fontFamily="sans-serif-medium"
-            android:textSize="14sp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:elevation="0dp" />
-
+        <!-- Done -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
+            <ImageButton
+                android:id="@+id/btnTextDone"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_check_24"
+                app:tint="@color/colorPrimary" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Done"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/colorPrimary"/>
+        </LinearLayout>
     </LinearLayout>
-
 </LinearLayout>

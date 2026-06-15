@@ -3,62 +3,62 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical">
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginBottom="24dp"
+    android:layout_marginTop="16dp"
+    android:orientation="horizontal"
+    android:gravity="center"
+    android:background="@drawable/bg_bottom_nav_floating"
+    android:paddingVertical="12dp"
+    android:paddingHorizontal="8dp"
+    android:elevation="12dp">
 
-    <!-- Rotation Slider Row -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:layout_marginHorizontal="16dp"
-        android:layout_marginBottom="8dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@drawable/bg_bottom_nav_floating"
-        android:paddingHorizontal="16dp">
-
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@drawable/ic_rotate_right_24"
-            app:tint="@color/iconSecondary" />
-
-        <com.google.android.material.slider.Slider
-            android:id="@+id/imageRotationSlider"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:valueFrom="0.0"
-            android:valueTo="360.0"
-            android:value="0.0"
-            android:stepSize="1.0"
-            app:thumbColor="@color/colorPrimary"
-            app:trackColorActive="@color/colorPrimary" />
-
-        <TextView
-            android:id="@+id/tvImageRotationValue"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center">
+        <ImageButton
+            android:id="@+id/btnVideoCancel"
             android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/tool_button_inactive"
+            android:src="@drawable/ic_close_24"
+            app:tint="@color/toolTextInactive" />
+        <TextView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="end"
-            android:text="0°"
-            android:textColor="@color/textColor"
-            android:textSize="14sp"
-            android:fontFamily="sans-serif-medium" />
+            android:layout_marginTop="4dp"
+            android:text="Cancel"
+            android:textSize="11sp"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/toolTextInactive"/>
     </LinearLayout>
 
-    <!-- Toolbar Row -->
     <LinearLayout
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="16dp"
-        android:layout_marginBottom="24dp"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:background="@drawable/bg_bottom_nav_floating"
-        android:paddingVertical="12dp"
-        android:paddingHorizontal="8dp"
-        android:elevation="12dp">
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center">
+        <ImageButton
+            android:id="@+id/btnVideoTrim"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/tool_button_inactive"
+            android:src="@drawable/ic_crop_24"
+            app:tint="@color/toolTextInactive" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Trim"
+            android:textSize="11sp"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/toolTextInactive"/>
+    </LinearLayout>
 
-        <!-- Cancel -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -66,35 +66,60 @@
             android:orientation="vertical"
             android:gravity="center">
             <ImageButton
-                android:id="@+id/btnImageCancel"
+                android:id="@+id/btnVideoSplit"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="@drawable/tool_button_inactive"
-                android:src="@drawable/ic_close_24"
+                android:src="@drawable/ic_cut_24"
                 app:tint="@color/toolTextInactive" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="Cancel"
+                android:text="Split"
                 android:textSize="11sp"
                 android:fontFamily="sans-serif-medium"
                 android:textColor="@color/toolTextInactive"/>
         </LinearLayout>
-        <!-- Delete -->
+
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="vertical"
-            android:gravity="center">
+            android:gravity="center"
+            android:id="@+id/btnVideoExtractAudioContainer">
             <ImageButton
-                android:id="@+id/btnImageDelete"
+                android:id="@+id/btnVideoExtractAudio"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_audio_24"
+                app:tint="@color/toolTextInactive" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Extract"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/toolTextInactive"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:id="@+id/btnVideoDeleteContainer">
+            <ImageButton
+                android:id="@+id/btnVideoDelete"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="@drawable/tool_button_inactive"
                 android:src="@drawable/ic_delete_24"
-                app:tint="#F44336" />
+                app:tint="@color/colorPrimary" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -102,32 +127,7 @@
                 android:text="Delete"
                 android:textSize="11sp"
                 android:fontFamily="sans-serif-medium"
-                android:textColor="#F44336"/>
-        </LinearLayout>
-        <!-- Done -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-            <ImageButton
-                android:id="@+id/btnImageDone"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="@drawable/tool_button_inactive"
-                android:src="@drawable/ic_check_24"
-                app:tint="@color/colorPrimary" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Done"
-                android:textSize="11sp"
-                android:fontFamily="sans-serif-medium"
                 android:textColor="@color/colorPrimary"/>
         </LinearLayout>
-
-    </LinearLayout>
 
 </LinearLayout>

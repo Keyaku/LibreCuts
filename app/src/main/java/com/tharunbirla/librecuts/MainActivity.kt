@@ -75,6 +75,10 @@ class MainActivity : AppCompatActivity() {
         binding.btnReportBug.setBounceClickListener {
             openUrl("https://github.com/tharunbirla/LibreCuts/issues")
         }
+        binding.btnSponsor.setBounceClickListener {
+            openUrl("https://github.com/sponsors/tharunbirla")
+        }
+
     }
 
     private fun switchTab(isHome: Boolean) {

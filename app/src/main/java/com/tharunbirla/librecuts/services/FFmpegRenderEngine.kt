@@ -8,6 +8,8 @@ import com.arthenica.ffmpegkit.FFmpegSession
 import com.arthenica.ffmpegkit.ReturnCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import java.io.File
 
 /**
@@ -186,7 +188,70 @@ class FFmpegRenderEngine(private val context: Context) {
     // ── Full-quality operations ───────────────────────────────────────────────
 
     /** Export the final video using the consolidated command from the ViewModel. */
-    suspend fun exportFinal(ffmpegCommand: String): RenderResult = executeCommand(ffmpegCommand)
+    suspend fun exportFinal(
+        ffmpegCommand: String,
+        totalDurationSecs: Double? = null,
+        onProgress: ((Int) -> Unit)? = null
+    ): RenderResult {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Executing FFmpeg command: $ffmpegCommand")
+                
+                val session = suspendCancellableCoroutine<FFmpegSession> { cont ->
+                    val asyncSession = FFmpegKit.executeAsync(ffmpegCommand, { completeSession ->
+                        cont.resume(completeSession)
+                    }, { log -> 
+                        // optional log
+                    }, { statistics ->
+                        if (totalDurationSecs != null && totalDurationSecs > 0) {
+                            val timeInMilliseconds = statistics.time
+                            if (timeInMilliseconds > 0) {
+                                val progress = ((timeInMilliseconds / 1000.0) / totalDurationSecs * 100).toInt()
+                                onProgress?.invoke(progress.coerceIn(0, 100))
+                            }
+                        }
+                    })
+                    activeSessions.add(asyncSession)
+                    
+                    cont.invokeOnCancellation {
+                        FFmpegKit.cancel(asyncSession.sessionId)
+                        activeSessions.remove(asyncSession)
+                    }
+                }
+                
+                activeSessions.remove(session)
+
+                val returnCode = session.returnCode
+                Log.d(TAG, "FFmpeg completed with return code: $returnCode")
+
+                if (ReturnCode.isSuccess(returnCode)) {
+                    RenderResult.Success(
+                        outputPath = extractOutputPath(ffmpegCommand),
+                        session = session
+                    )
+                } else {
+                    val failLog = session.failStackTrace
+                        ?: session.allLogsAsString
+                        ?: "Unknown error"
+                    Log.e(TAG, "FFmpeg error: $failLog")
+                    RenderResult.Failure(error = failLog, session = session)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception during FFmpeg execution: ${e.message}", e)
+                RenderResult.Failure(error = e.message ?: "Unknown exception")
+            }
+        }
+    }
+
+    /** Extract audio from a video file using FFmpeg. */
+    suspend fun extractAudio(
+        sourceFilePath: String,
+        outputFilePath: String
+    ): RenderResult {
+        // -vn disables video stream, -acodec copy copies the audio stream.
+        val command = "-y -i \"$sourceFilePath\" -vn -acodec copy \"$outputFilePath\""
+        return executeCommand(command)
+    }
 
     /**
      * Merge videos using the FFmpeg concat demuxer.

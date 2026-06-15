@@ -101,6 +101,14 @@ sealed class EditOperation : Serializable {
     data class MuteAudio(
         val id: String = System.nanoTime().toString()
     ) : EditOperation()
+
+    /**
+     * Mute segment operation: Mutes a specific video segment.
+     */
+    data class MuteSegment(
+        val index: Int,
+        val id: String = System.nanoTime().toString()
+    ) : EditOperation()
     
     /**
      * Add background audio operation: Overlays an audio file over the video.
