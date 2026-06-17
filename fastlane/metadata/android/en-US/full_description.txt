@@ -1,0 +1,35 @@
+LibreCuts is a free, open-source video editor for Android that prioritizes simplicity, efficiency, and privacy. Built for seamless performance, it empowers creators to easily select, edit, and export watermark-free videos locally on their device.
+
+⚠️ NOTE: LibreCuts is currently in its Beta stage. Please expect bugs, potential instability, and incomplete features as we continue active development.
+
+## Features
+
+- Trim - Remove unwanted parts from the beginning or end of a video clip with a real-time timeline control.
+- Overlays - Place text or images on top of video clips to create engaging content.
+- Audio - Manage soundtracks effortlessly by importing custom music or audio tracks.
+- Scale - Adjust the size and positioning of a video or image within the frame.
+- Merge - Combine multiple video segments into a continuous sequence.
+- Rotate - Change the orientation of a video clip.
+
+## Support LibreCuts
+
+LibreCuts is built with passion and provided to the community for free. If this app has helped you create amazing videos, consider supporting its continued development! Your sponsorship helps keep the project alive and growing.
+
+Sponsor Link: https://github.com/sponsors/tharunbirla
+
+## Permissions
+
+LibreCuts requires the following permissions to function properly:
+
+- READ_EXTERNAL_STORAGE: To read videos from the device.
+- WRITE_EXTERNAL_STORAGE: (For older Android versions) To save edited videos.
+- POST_NOTIFICATIONS: To show notifications related to video editing.
+- READ_MEDIA_AUDIO/VIDEO/IMAGES: For accessing media files on devices running Android 13 (API level 33) and above.
+
+## Contributing
+
+Contributions are welcome! If you have suggestions or improvements, feel free to create a pull request or open an issue.
+
+## License
+
+This project is licensed under the MIT License.
