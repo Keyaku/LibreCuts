@@ -973,7 +973,7 @@ class VideoEditingActivity : AppCompatActivity() {
             params.gravity = Gravity.CENTER
             playerView.layoutParams = params
 
-            playerView.resizeMode = 4 // RESIZE_MODE_ZOOM
+            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM // RESIZE_MODE_ZOOM
 
             val overlays = listOf(textOverlayView, draggableTextOverlay, imageOverlayView, draggableImageOverlay)
             for (overlay in overlays) {
