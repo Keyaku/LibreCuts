@@ -1,7 +1,7 @@
 # LibreCuts
 
 <div align="center">
-  <img src="src/images/ic_banner.png" alt="LibreCuts Banner" width="100%"/>
+  <img src="src/images/featureGraphic.png" alt="LibreCuts Banner" width="100%"/>
   <br/>
   <br/>
 
@@ -24,9 +24,10 @@
 - **Trim** - Remove unwanted parts from the beginning or end of a video clip with a real-time timeline control.
 - **Overlays** - Place text or images on top of video clips to create engaging content.
 - **Audio** - Manage soundtracks effortlessly by importing custom music or audio tracks.
-- **Scale** - Adjust the size and positioning of a video or image within the frame.
+- **Crop** - Adjust the aspect ration of a video.
 - **Merge** - Combine multiple video segments into a continuous sequence.
-- **Rotate** - Change the orientation of a video clip.
+- **Transition** - Change the orientation of a video clip.
+- **Speed** - Change the speed of a video clip.
 
 ## 📱 Screenshots
 
