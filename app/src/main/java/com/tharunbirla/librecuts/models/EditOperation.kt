@@ -176,8 +176,16 @@ sealed class EditOperation : Serializable {
         val srtContent: String,
         val fileName: String,
         val cues: List<SubtitleCue>,
+        val color: String = "#FFFFFF",
+        val backgroundColor: String = "none",
+        val fontSize: Int = 22,
+        val position: TextPosition = TextPosition.BOTTOM_CENTER,
+        val relativeX: Float? = null,
+        val relativeY: Float? = null,
         val id: String = System.nanoTime().toString()
-    ) : EditOperation()
+    ) : EditOperation() {
+        fun hasCustomPosition(): Boolean = relativeX != null && relativeY != null
+    }
 }
 
 data class SubtitleCue(

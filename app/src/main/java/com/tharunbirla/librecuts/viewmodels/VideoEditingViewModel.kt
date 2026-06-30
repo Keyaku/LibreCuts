@@ -461,6 +461,7 @@ class VideoEditingViewModel : ViewModel() {
                         is EditOperation.AddText -> it.id == id
                         is EditOperation.AddImageOverlay -> it.id == id
                         is EditOperation.AddBackgroundAudio -> it.id == id
+                        is EditOperation.AddSubtitles -> it.id == id
                         else -> false
                     }
                 }
@@ -621,7 +622,22 @@ class VideoEditingViewModel : ViewModel() {
         }
 
         val enablePart = buildEnableExpr(op.startTimeMs, op.endTimeMs)
-        return "drawtext=${fontPart}text='$escapedText':fontcolor='${op.color}':fontsize=${op.fontSize}:$positionPart$enablePart"
+        return "drawtext=${fontPart}text='$escapedText':fontcolor='${formatColorForFFmpeg(op.color)}':fontsize=${op.fontSize}:$positionPart$enablePart"
+    }
+
+    private fun formatColorForFFmpeg(colorHex: String): String {
+        if (!colorHex.startsWith("#")) return colorHex
+        return when (colorHex.length) {
+            9 -> { // #AARRGGBB -> 0xRRGGBBAA
+                val aa = colorHex.substring(1, 3)
+                val rrggbb = colorHex.substring(3)
+                "0x$rrggbb$aa"
+            }
+            7 -> { // #RRGGBB -> 0xRRGGBB
+                "0x${colorHex.substring(1)}"
+            }
+            else -> colorHex
+        }
     }
 
     private fun buildEnableExpr(startTimeMs: Long?, endTimeMs: Long?): String {
@@ -715,7 +731,26 @@ class VideoEditingViewModel : ViewModel() {
                         val startSec = cue.startTimeMs / 1000.0
                         val endSec = cue.endTimeMs / 1000.0
                         val enablePart = ":enable='between(t,$startSec,$endSec)'"
-                        val filterExpr = "drawtext=${fontPart}text='$escapedText':fontcolor=white:fontsize=22:x=(w-tw)/2:y=h-th-24$enablePart"
+
+                        val posPart = if (op.hasCustomPosition()) {
+                            "x='(w*${op.relativeX})-(tw/2)':y='(h*${op.relativeY})-(th/2)'"
+                        } else {
+                            when (op.position) {
+                                TextPosition.TOP_LEFT -> "x=24:y=24"
+                                TextPosition.TOP_CENTER, TextPosition.CENTER_TOP -> "x=(w-tw)/2:y=24"
+                                TextPosition.TOP_RIGHT -> "x=w-tw-24:y=24"
+                                TextPosition.CENTER_LEFT -> "x=24:y=(h-th)/2"
+                                TextPosition.CENTER -> "x=(w-tw)/2:y=(h-th)/2"
+                                TextPosition.CENTER_RIGHT -> "x=w-tw-24:y=(h-th)/2"
+                                TextPosition.BOTTOM_LEFT -> "x=24:y=h-th-24"
+                                TextPosition.BOTTOM_CENTER, TextPosition.CENTER_BOTTOM -> "x=(w-tw)/2:y=h-th-24"
+                                TextPosition.BOTTOM_RIGHT -> "x=w-tw-24:y=h-th-24"
+                            }
+                        }
+
+                        val boxPart = ":box=1:boxcolor='0x00000080':boxborderw=8"
+                        
+                        val filterExpr = "drawtext=${fontPart}text='$escapedText':fontcolor='white':fontsize=${op.fontSize}:${posPart}${boxPart}$enablePart"
                         
                         val nextLabel = "[v$stageIndex]"
                         stages.add("$currentLabel$filterExpr$nextLabel")

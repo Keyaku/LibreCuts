@@ -1,10 +1,13 @@
 package com.tharunbirla.librecuts.customviews
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.util.AttributeSet
+import android.view.ScaleGestureDetector
 import android.view.View
 import com.tharunbirla.librecuts.models.EditOperation
 import com.tharunbirla.librecuts.models.TextPosition
@@ -25,6 +28,46 @@ class TextOverlayView @JvmOverloads constructor(
         isAntiAlias = true
         setShadowLayer(4f, 2f, 2f, Color.BLACK)
     }
+
+    private var isDraggingSubtitle = false
+    private var dragStartX = 0f
+    private var dragStartY = 0f
+    private var initialRelativeX = 0.5f
+    private var initialRelativeY = 0.8f
+
+    private val subtitleBounds = android.graphics.RectF()
+    private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#007AFF") // Active accent color
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        pathEffect = DashPathEffect(floatArrayOf(10f, 10f), 0f)
+    }
+
+    var isSubtitlesEditingActive: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+    var subtitleOperation: EditOperation.AddSubtitles? = null
+        set(value) {
+            field = value
+            this.subtitleCues = value?.cues ?: emptyList()
+            invalidate()
+        }
+    var onSubtitlePositionChanged: ((relativeX: Float, relativeY: Float) -> Unit)? = null
+    var onSubtitleFontSizeChanged: ((fontSize: Int) -> Unit)? = null
+
+    private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            val scaleFactor = detector.scaleFactor
+            val currentSize = subtitleOperation?.fontSize ?: 22
+            val newSize = (currentSize * scaleFactor).toInt().coerceIn(10, 80)
+            if (newSize != currentSize) {
+                onSubtitleFontSizeChanged?.invoke(newSize)
+            }
+            return true
+        }
+    })
 
     private var textOperations: List<EditOperation.AddText> = emptyList()
     private var videoWidth = 0
@@ -168,12 +211,27 @@ class TextOverlayView @JvmOverloads constructor(
             canvas.drawText(textOp.text, x, y, paint)
         }
 
-        // Render subtitles centered at bottom
+        // Render subtitles centered at bottom or custom positioned
         val activeCue = subtitleCues.firstOrNull { currentPositionMs in it.startTimeMs..it.endTimeMs }
+            ?: if (isSubtitlesEditingActive && subtitleOperation != null) {
+                com.tharunbirla.librecuts.models.SubtitleCue(0, 0, "[Subtitle Preview]")
+            } else {
+                null
+            }
+
         if (activeCue != null) {
-            paint.textSize = 22f * context.resources.displayMetrics.density * scale // Make subtitles nicely legible
+            val subOp = subtitleOperation
+            val fontSizeVal = subOp?.fontSize ?: 22
+            paint.textSize = fontSizeVal.toFloat() * context.resources.displayMetrics.density * scale
             paint.color = Color.WHITE
-            
+
+            val bgPaint = Paint().apply {
+                isAntiAlias = true
+                style = Paint.Style.FILL
+                color = Color.parseColor("#80000000")
+            }
+            val showBg = true
+
             val lines = activeCue.text.split("\n")
             val textHeight = paint.descent() - paint.ascent()
             
@@ -182,16 +240,182 @@ class TextOverlayView @JvmOverloads constructor(
             val rectL = videoRect.left
             val rectT = videoRect.top
             
-            // Draw subtitle lines from bottom up or top down
-            // Subtitle baseline of first line starts at: height - 32dp offset - (remaining lines * height)
-            var currentY = rectT + rectH - 24f * scale - (lines.size - 1) * textHeight
-            
-            for (line in lines) {
-                val textWidth = paint.measureText(line)
-                val x = rectL + (rectW - textWidth) / 2
-                canvas.drawText(line, x, currentY, paint)
-                currentY += textHeight
+            val totalBlockHeight = lines.size * textHeight
+            val maxLineWidth = lines.maxOfOrNull { paint.measureText(it) } ?: 0f
+
+            val refX: Float
+            val refY: Float
+
+            if (subOp != null && subOp.hasCustomPosition()) {
+                refX = rectL + (subOp.relativeX!! * rectW)
+                refY = rectT + (subOp.relativeY!! * rectH)
+                
+                // Draw centering each line horizontally around refX and the whole block vertically around refY
+                var currentY = refY - (totalBlockHeight / 2f) - ((paint.ascent() + paint.descent()) / 2f)
+                
+                // Update bounds for border
+                val paddingVal = 12f * scale
+                subtitleBounds.set(
+                    refX - (maxLineWidth / 2f) - paddingVal,
+                    refY - (totalBlockHeight / 2f) - paddingVal,
+                    refX + (maxLineWidth / 2f) + paddingVal,
+                    refY + (totalBlockHeight / 2f) + paddingVal
+                )
+
+                for (line in lines) {
+                    val lineTextWidth = paint.measureText(line)
+                    val lineX = refX - (lineTextWidth / 2f)
+                    
+                    if (showBg) {
+                        val paddingX = 8f * scale
+                        val paddingY = 4f * scale
+                        canvas.drawRoundRect(
+                            lineX - paddingX,
+                            currentY + paint.ascent() - paddingY,
+                            lineX + lineTextWidth + paddingX,
+                            currentY + paint.descent() + paddingY,
+                            8f * scale, 8f * scale, bgPaint
+                        )
+                    }
+                    canvas.drawText(line, lineX, currentY, paint)
+                    currentY += textHeight
+                }
+            } else {
+                // Predefined position alignment
+                val pos = subOp?.position ?: TextPosition.BOTTOM_CENTER
+                
+                when (pos) {
+                    TextPosition.TOP_LEFT -> {
+                        refX = rectL + 16f * scale + (maxLineWidth / 2f)
+                        refY = rectT + 32f * scale + (totalBlockHeight / 2f)
+                    }
+                    TextPosition.TOP_CENTER, TextPosition.CENTER_TOP -> {
+                        refX = rectL + rectW / 2
+                        refY = rectT + 32f * scale + (totalBlockHeight / 2f)
+                    }
+                    TextPosition.TOP_RIGHT -> {
+                        refX = rectL + rectW - 16f * scale - (maxLineWidth / 2f)
+                        refY = rectT + 32f * scale + (totalBlockHeight / 2f)
+                    }
+                    TextPosition.CENTER_LEFT -> {
+                        refX = rectL + 16f * scale + (maxLineWidth / 2f)
+                        refY = rectT + rectH / 2
+                    }
+                    TextPosition.CENTER -> {
+                        refX = rectL + rectW / 2
+                        refY = rectT + rectH / 2
+                    }
+                    TextPosition.CENTER_RIGHT -> {
+                        refX = rectL + rectW - 16f * scale - (maxLineWidth / 2f)
+                        refY = rectT + rectH / 2
+                    }
+                    TextPosition.BOTTOM_LEFT -> {
+                        refX = rectL + 16f * scale + (maxLineWidth / 2f)
+                        refY = rectT + rectH - 16f * scale - (totalBlockHeight / 2f)
+                    }
+                    TextPosition.BOTTOM_CENTER, TextPosition.CENTER_BOTTOM -> {
+                        refX = rectL + rectW / 2
+                        refY = rectT + rectH - 24f * scale - (totalBlockHeight / 2f)
+                    }
+                    TextPosition.BOTTOM_RIGHT -> {
+                        refX = rectL + rectW - 16f * scale - (maxLineWidth / 2f)
+                        refY = rectT + rectH - 16f * scale - (totalBlockHeight / 2f)
+                    }
+                }
+                
+                // Update bounds for border
+                val paddingVal = 12f * scale
+                subtitleBounds.set(
+                    refX - (maxLineWidth / 2f) - paddingVal,
+                    refY - (totalBlockHeight / 2f) - paddingVal,
+                    refX + (maxLineWidth / 2f) + paddingVal,
+                    refY + (totalBlockHeight / 2f) + paddingVal
+                )
+
+                var currentY = refY - (totalBlockHeight / 2f) - ((paint.ascent() + paint.descent()) / 2f)
+                for (line in lines) {
+                    val lineTextWidth = paint.measureText(line)
+                    val lineX = when (pos) {
+                        TextPosition.TOP_LEFT, TextPosition.CENTER_LEFT, TextPosition.BOTTOM_LEFT -> {
+                            refX - (maxLineWidth / 2f)
+                        }
+                        TextPosition.TOP_RIGHT, TextPosition.CENTER_RIGHT, TextPosition.BOTTOM_RIGHT -> {
+                            refX + (maxLineWidth / 2f) - lineTextWidth
+                        }
+                        else -> {
+                            refX - (lineTextWidth / 2f)
+                        }
+                    }
+                    
+                    if (showBg) {
+                        val paddingX = 8f * scale
+                        val paddingY = 4f * scale
+                        canvas.drawRoundRect(
+                            lineX - paddingX,
+                            currentY + paint.ascent() - paddingY,
+                            lineX + lineTextWidth + paddingX,
+                            currentY + paint.descent() + paddingY,
+                            8f * scale, 8f * scale, bgPaint
+                        )
+                    }
+                    canvas.drawText(line, lineX, currentY, paint)
+                    currentY += textHeight
+                }
+            }
+
+            // Draw dotted selection border if subtitles editing is active
+            if (isSubtitlesEditingActive) {
+                canvas.drawRect(subtitleBounds, selectionPaint)
             }
         }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (!isSubtitlesEditingActive || subtitleOperation == null) {
+            return super.onTouchEvent(event)
+        }
+
+        if (event.pointerCount > 1) {
+            scaleDetector.onTouchEvent(event)
+            if (scaleDetector.isInProgress) {
+                isDraggingSubtitle = false
+                return true
+            }
+        }
+
+        val videoRect = getVideoRect()
+
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                val touchX = event.x
+                val touchY = event.y
+                if (subtitleBounds.contains(touchX, touchY)) {
+                    isDraggingSubtitle = true
+                    dragStartX = touchX
+                    dragStartY = touchY
+                    initialRelativeX = subtitleOperation?.relativeX ?: 0.5f
+                    initialRelativeY = subtitleOperation?.relativeY ?: 0.8f
+                    return true
+                }
+            }
+            android.view.MotionEvent.ACTION_MOVE -> {
+                if (isDraggingSubtitle) {
+                    val deltaX = event.x - dragStartX
+                    val deltaY = event.y - dragStartY
+                    val newRelX = (initialRelativeX + deltaX / videoRect.width()).coerceIn(0f, 1f)
+                    val newRelY = (initialRelativeY + deltaY / videoRect.height()).coerceIn(0f, 1f)
+                    onSubtitlePositionChanged?.invoke(newRelX, newRelY)
+                    return true
+                }
+            }
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                if (isDraggingSubtitle) {
+                    isDraggingSubtitle = false
+                    return true
+                }
+            }
+        }
+        return true
     }
 }
