@@ -30,29 +30,29 @@ class CustomVideoSeeker @JvmOverloads constructor(
 
     /** The main accent line */
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#FF4081")
-        strokeWidth = 6f // Slightly thicker for a premium feel
+        color = Color.parseColor("#FF2A6D") // Primary theme color
+        strokeWidth = 2f // Will be multiplied by density in init/draw
         style = Paint.Style.FILL_AND_STROKE
-        strokeCap = Paint.Cap.ROUND // Smooth ends
+        strokeCap = Paint.Cap.ROUND
     }
 
     /** The "Shield" handle at the top */
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#FF4081")
+        color = Color.parseColor("#FF2A6D") // Primary theme color
         style = Paint.Style.FILL
     }
 
     /** Subtle drop shadow so the playhead doesn't get lost in light scenes */
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.BLACK
-        alpha = 50 // Very subtle
+        alpha = 40
         style = Paint.Style.STROKE
-        strokeWidth = 8f
+        strokeWidth = 3f
     }
 
     /** Subtle white glow behind the handle for depth */
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#44FFFFFF")
+        color = Color.parseColor("#33FFFFFF")
         style = Paint.Style.FILL
     }
 
@@ -62,26 +62,27 @@ class CustomVideoSeeker @JvmOverloads constructor(
     var onSeekListener: ((Float) -> Unit)? = null
 
     // ── Handle geometry ───────────────────────────────────────────────────────
-    private val handleRadius = 10f  // dp-ish; fine at mdpi; scale if needed
     private val handleRect = RectF()
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
+        val density = resources.displayMetrics.density
         val seekX = width / 2f
-        val handleWidth = 24f  // The width of the top pin
-        val handleHeight = 40f // The height of the top pin
-        val cornerRadius = 6f
+        val handleWidth = 14f * density  // 14dp
+        val handleHeight = 28f * density // 28dp (exactly matches the TimeRulerView height)
+        val cornerRadius = 4f * density
+        
+        linePaint.strokeWidth = 1.5f * density
+        shadowPaint.strokeWidth = 3f * density
 
         // 1. Draw the subtle drop shadow for the vertical line
-        // We offset it slightly to the right to create depth
-        canvas.drawLine(seekX + 2f, handleHeight, seekX + 2f, height.toFloat(), shadowPaint)
+        canvas.drawLine(seekX + 1f * density, handleHeight, seekX + 1f * density, height.toFloat(), shadowPaint)
 
         // 2. Draw the main vertical accent line (The Stem)
         canvas.drawLine(seekX, handleHeight, seekX, height.toFloat(), linePaint)
 
-        // 3. Draw the handle "Head" (A rounded rectangle/shield)
-        // This replaces the simple circle and looks much more like a timeline needle
+        // 3. Draw the handle "Head" (A rounded rectangle/shield pointing downwards)
         handleRect.set(
             seekX - (handleWidth / 2),
             0f,

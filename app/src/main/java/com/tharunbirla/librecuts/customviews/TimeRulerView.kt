@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.util.AttributeSet
 import android.view.View
 import java.util.Locale
@@ -17,27 +18,29 @@ class TimeRulerView @JvmOverloads constructor(
     private var videoDurationMs: Long = 0L
 
     private val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#49474F") // outlineVariant
+        color = Color.parseColor("#3F3F4A") // outline
         strokeWidth = 2f
         style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
     }
 
     private val majorTickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#CAC4D0") // toolTextInactive
+        color = Color.parseColor("#8A8A93") // toolTextInactive / inactiveTool
         strokeWidth = 3f
         style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
     }
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#CAC4D0") // toolTextInactive
+        color = Color.parseColor("#8A8A93")
         textSize = 24f // approx 10sp
         textAlign = Paint.Align.CENTER
+        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
     }
 
     init {
-        // Convert 10sp to pixels for text size
         val density = resources.displayMetrics.density
-        textPaint.textSize = 10f * density
+        textPaint.textSize = 9f * density // 9sp for clean look
     }
 
     fun setVideoDuration(durationMs: Long) {
@@ -49,23 +52,37 @@ class TimeRulerView @JvmOverloads constructor(
         super.onDraw(canvas)
         if (videoDurationMs <= 0 || width <= 0) return
 
-        val durationSec = videoDurationMs / 1000f
-        if (durationSec <= 0f) return
+        val msPerPixel = videoDurationMs.toFloat() / width
+        if (msPerPixel <= 0f) return
+
+        val density = resources.displayMetrics.density
+        
+        // Dynamic step calculations based on pixels/zoom level
+        // We target roughly 80dp of space between major ticks
+        val targetWidthPx = 80f * density
+        val targetMs = targetWidthPx * msPerPixel
 
         val stepMs = when {
-            durationSec <= 15 -> 2000L    // Every 2 seconds
-            durationSec <= 30 -> 5000L    // Every 5 seconds
-            durationSec <= 60 -> 10000L   // Every 10 seconds
-            durationSec <= 120 -> 15000L  // Every 15 seconds
-            durationSec <= 300 -> 30000L  // Every 30 seconds
-            else -> 60000L                // Every 1 minute
+            targetMs <= 100L -> 100L
+            targetMs <= 200L -> 200L
+            targetMs <= 500L -> 500L
+            targetMs <= 1000L -> 1000L
+            targetMs <= 2000L -> 2000L
+            targetMs <= 5000L -> 5000L
+            targetMs <= 10000L -> 10000L
+            targetMs <= 30000L -> 30000L
+            targetMs <= 60000L -> 60000L
+            targetMs <= 120000L -> 120000L
+            targetMs <= 300000L -> 300000L
+            else -> 600000L
         }
 
+        // Minor step is always 1/5th of major step
         val minorStepMs = stepMs / 5
-        val msPerPixel = videoDurationMs.toFloat() / width
 
-        // Draw top horizontal baseline
-        canvas.drawLine(0f, 0f, width.toFloat(), 0f, tickPaint)
+        val heightVal = height.toFloat()
+        val textY = 12f * density // Draw text near the top
+        val tickBottom = heightVal - 2f * density
 
         // Draw minor and major ticks
         var currentMs = 0L
@@ -73,20 +90,24 @@ class TimeRulerView @JvmOverloads constructor(
             val x = currentMs / msPerPixel
 
             if (currentMs % stepMs == 0L) {
-                // Major tick
-                canvas.drawLine(x, 0f, x, height * 0.4f, majorTickPaint)
+                // Major tick: clean line from middle to bottom
+                canvas.drawLine(x, heightVal * 0.5f, x, tickBottom, majorTickPaint)
 
-                // Format time string (e.g., 00:02 or 01:30)
+                // Format time string (e.g., 00:02 or 01:30 or 00:02.5 for sub-seconds)
                 val minutes = (currentMs / 60000).toInt()
                 val seconds = ((currentMs % 60000) / 1000).toInt()
-                val timeStr = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+                val timeStr = if (stepMs < 1000L) {
+                    val tenths = ((currentMs % 1000) / 100).toInt()
+                    String.format(Locale.getDefault(), "%02d:%02d.%d", minutes, seconds, tenths)
+                } else {
+                    String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+                }
 
-                // Draw label below tick
-                val textY = height * 0.85f
+                // Draw label at the top center of tick
                 canvas.drawText(timeStr, x, textY, textPaint)
             } else {
-                // Minor tick
-                canvas.drawLine(x, 0f, x, height * 0.2f, tickPaint)
+                // Minor tick: short thin line near bottom
+                canvas.drawLine(x, heightVal * 0.75f, x, tickBottom, tickPaint)
             }
 
             currentMs += minorStepMs

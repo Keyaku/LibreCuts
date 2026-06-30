@@ -215,14 +215,15 @@ class VideoEditingActivity : AppCompatActivity() {
                     player.pause()
                     btnPlayPause.setImageResource(R.drawable.ic_play_24)
                 } else {
-                    // CHECK: If the player is outside active trim bounds, seek to the active start first
                     val trimOp = viewModel.project.value?.operations?.filterIsInstance<EditOperation.Trim>()?.lastOrNull()
                     val startMs = trimOp?.startMs ?: 0L
-                    val endMs = trimOp?.endMs ?: player.duration
-                    if (player.currentPosition < startMs || player.currentPosition >= endMs) {
-                        player.seekTo(startMs)
+                    val totalDuration = getTotalSequenceDuration()
+                    val endMs = trimOp?.endMs ?: totalDuration
+                    val currentGlobalPos = getGlobalPosition()
+                    if (currentGlobalPos < startMs || currentGlobalPos >= endMs) {
+                        seekToGlobalPosition(startMs)
                         timelineHorizontalScroll.scrollTo((startMs * pixelsPerMs).toInt(), 0)
-                        updateDurationDisplay(startMs.toInt(), player.duration.toInt())
+                        updateDurationDisplay(startMs.toInt(), totalDuration.toInt())
                     }
                     player.play()
                     btnPlayPause.setImageResource(R.drawable.ic_pause_24)
@@ -2104,15 +2105,16 @@ class VideoEditingActivity : AppCompatActivity() {
                     }
                     if (state == Player.STATE_READY) {
                         isVideoLoaded = true
-                        customVideoSeeker.setVideoDuration(player.duration)
-                        timeRulerView.setVideoDuration(player.duration)
-                        updateDurationDisplay(player.currentPosition.toInt(), player.duration.toInt())
+                        val totalDuration = getTotalSequenceDuration()
+                        customVideoSeeker.setVideoDuration(totalDuration)
+                        timeRulerView.setVideoDuration(totalDuration)
+                        updateDurationDisplay(getGlobalPosition().toInt(), totalDuration.toInt())
                         
-                        if (!isInitialFitDone && player.duration > 0L) {
+                        if (!isInitialFitDone && totalDuration > 0L) {
                             timelineHorizontalScroll.post {
                                 val scrollWidth = timelineHorizontalScroll.width.toFloat()
                                 if (scrollWidth > 0) {
-                                    val safeDuration = getTotalSequenceDuration().coerceAtLeast(player.duration)
+                                    val safeDuration = totalDuration
                                     val newPixelsPerMs = (scrollWidth - 32.dpToPx()) / safeDuration
                                     val density = resources.displayMetrics.density
                                     pixelsPerMs = newPixelsPerMs.coerceIn(0.001f * density, 2.0f * density)
@@ -2260,8 +2262,26 @@ class VideoEditingActivity : AppCompatActivity() {
         }
     }
 
-    private fun seekToGlobalPosition(globalPos: Long) {
+    private var lastSoughtGlobalPos = -1L
+    private var pendingSeekRunnable: Runnable? = null
+
+    private fun seekToGlobalPosition(globalPos: Long, force: Boolean = false) {
         if (!::player.isInitialized) return
+        
+        val timeDiff = Math.abs(globalPos - lastSoughtGlobalPos)
+        if (!force && timeDiff < 40 && lastSoughtGlobalPos != -1L) {
+            pendingSeekRunnable?.let { customVideoSeeker.removeCallbacks(it) }
+            val runnable = Runnable {
+                seekToGlobalPosition(globalPos, force = true)
+            }
+            pendingSeekRunnable = runnable
+            customVideoSeeker.postDelayed(runnable, 50)
+            return
+        }
+        
+        pendingSeekRunnable?.let { customVideoSeeker.removeCallbacks(it) }
+        lastSoughtGlobalPos = globalPos
+
         var remainingPos = globalPos
         var index = 0
         while (index < chunkDurationsMs.size && remainingPos > chunkDurationsMs[index]) {
@@ -2270,6 +2290,9 @@ class VideoEditingActivity : AppCompatActivity() {
         }
         if (index < chunkDurationsMs.size) {
             player.seekTo(index, remainingPos)
+        } else if (chunkDurationsMs.isNotEmpty()) {
+            val lastIndex = chunkDurationsMs.size - 1
+            player.seekTo(lastIndex, chunkDurationsMs[lastIndex])
         }
         val totalDuration = getTotalSequenceDuration()
         updateDurationDisplay(globalPos.toInt(), totalDuration.toInt())
@@ -2494,7 +2517,7 @@ class VideoEditingActivity : AppCompatActivity() {
         player.setMediaSource(finalSource)
         player.prepare()
         
-        seekToGlobalPosition(globalPos)
+        seekToGlobalPosition(globalPos, force = true)
         if (wasPlaying) player.play()
 
 
@@ -3127,7 +3150,7 @@ class VideoEditingActivity : AppCompatActivity() {
 
     @SuppressLint("SetTextI18n")
     private fun updateDurationDisplay(current: Int, total: Int) {
-        if (!isVideoLoaded || total <= 0) return
+        if (total <= 0) return
         tvDuration.text = "${formatDuration(current)} / ${formatDuration(total)}"
     }
 

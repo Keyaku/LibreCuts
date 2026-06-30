@@ -281,8 +281,8 @@
                         <com.tharunbirla.librecuts.customviews.TimeRulerView
                             android:id="@+id/timeRulerView"
                             android:layout_width="wrap_content"
-                            android:layout_height="24dp"
-                            android:background="@color/background" />
+                            android:layout_height="28dp"
+                            android:background="@color/colorSurface" />
 
                         <ScrollView
                             android:layout_width="match_parent"
