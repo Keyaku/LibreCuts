@@ -587,6 +587,9 @@ class VideoEditingActivity : AppCompatActivity() {
                 toolbar.findViewById<ImageButton>(R.id.btnAudioDone)?.setBounceClickListener {
                     exitAudioEditingMode()
                 }
+                toolbar.findViewById<ImageButton>(R.id.btnAudioCancel)?.setBounceClickListener {
+                    exitAudioEditingMode()
+                }
                 toolbar.findViewById<ImageButton>(R.id.btnAudioDelete)?.setBounceClickListener {
                     viewModel.selectedOperationId.value?.let { id ->
                         viewModel.deleteOperation(id)
@@ -1302,7 +1305,7 @@ class VideoEditingActivity : AppCompatActivity() {
                 val seqDuration = getTotalSequenceDuration()
                 trimTrack?.maxSelectionDurationMs = if (seqDuration > 0) seqDuration else null
                 
-                val trackWidth = resources.displayMetrics.widthPixels - 32.dpToPx()
+                val trackWidth = resources.displayMetrics.widthPixels - 64.dpToPx()
                 trimTrack?.customMsPerPixel = op.originalDurationMs.toFloat() / trackWidth
                 
                 val endMs = if (op.internalEndMs > 0) op.internalEndMs else op.originalDurationMs
@@ -2747,7 +2750,7 @@ class VideoEditingActivity : AppCompatActivity() {
 
         // Configure RecyclerView for 15 dynamic tiles
         recyclerView.layoutManager = LinearLayoutManager(this, RecyclerView.HORIZONTAL, false)
-        val dialogRecyclerViewWidth = resources.displayMetrics.widthPixels - 40.dpToPx()
+        val dialogRecyclerViewWidth = resources.displayMetrics.widthPixels - 80.dpToPx()
         val dialogItemWidth = maxOf(1, dialogRecyclerViewWidth / 15)
         val adapter = FrameAdapter(emptyList(), dialogItemWidth)
         recyclerView.adapter = adapter

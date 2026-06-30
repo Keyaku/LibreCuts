@@ -319,6 +319,7 @@
             layout="@layout/text_editing_toolbar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:visibility="gone" />
 
         <!-- Image Editing Toolbar (inline mode, hidden by default) -->
@@ -327,6 +328,7 @@
             layout="@layout/image_editing_toolbar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:visibility="gone" />
 
         <!-- Video Editing Toolbar (inline mode, hidden by default) -->
@@ -335,6 +337,7 @@
             layout="@layout/video_editing_toolbar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:visibility="gone" />
 
         <!-- Audio Editing Toolbar (inline mode, hidden by default) -->
@@ -343,6 +346,7 @@
             layout="@layout/audio_editing_toolbar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:visibility="gone" />
 
         <!-- Crop Editing Toolbar (inline mode, hidden by default) -->
@@ -351,6 +355,7 @@
             layout="@layout/crop_editing_toolbar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:visibility="gone" />
 
         <!-- Speed Editing Toolbar (inline mode, hidden by default) -->
@@ -359,6 +364,7 @@
             layout="@layout/speed_editing_toolbar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:visibility="gone" />
 
         <!-- Subtitles Editing Toolbar (inline mode, hidden by default) -->
@@ -367,6 +373,7 @@
             layout="@layout/subtitles_editing_toolbar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:visibility="gone" />
 
         <LinearLayout
