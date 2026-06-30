@@ -22,7 +22,6 @@ import com.tharunbirla.librecuts.utils.setBounceClickListener
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var requestPermissionsLauncher: ActivityResultLauncher<Array<String>>
     private val selectVideoLauncher =
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
             if (uri != null) {
@@ -38,17 +37,11 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupPermissions()
         setupGlobalCrashHandler()
 
         binding.btnImport.setBounceClickListener {
-            if (arePermissionsGranted()) {
-                Log.d("ButtonClick", "Permissions granted, launching video selection.")
-                selectVideo()
-            } else {
-                Log.w("PermissionCheck", "Permissions not granted, showing request dialog.")
-                showPermissionRequestDialog()
-            }
+            Log.d("ButtonClick", "Launching video selection.")
+            selectVideo()
         }
 
         // Initialize bottom navigation tab backgrounds
@@ -134,90 +127,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupPermissions() {
-        requestPermissionsLauncher =
-            registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-                val allGranted = permissions.values.all { it }
-                if (allGranted) {
-                    Log.d("PermissionResult", "All permissions granted.")
-                    showToast("Permissions granted")
-                } else {
-                    Log.w("PermissionResult", "Some permissions were denied.")
-                    showToast("Some permissions were denied")
-                }
-            }
 
-        if (!arePermissionsGranted()) {
-            Log.i("PermissionSetup", "Requesting permissions.")
-            showPermissionRequestDialog()
-        }
-    }
-
-    private fun arePermissionsGranted(): Boolean {
-        return when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
-                checkPermissions(
-                    Manifest.permission.POST_NOTIFICATIONS,
-                    Manifest.permission.READ_MEDIA_VIDEO
-                )
-            }
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
-                checkPermissions(
-                    Manifest.permission.READ_EXTERNAL_STORAGE
-                )
-            }
-            else -> {
-                checkPermissions(
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-                )
-            }
-        }
-    }
-
-    private fun checkPermissions(vararg permissions: String): Boolean {
-        return permissions.all { permission ->
-            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
-        }.also { result ->
-            Log.d("PermissionCheck", "Permissions checked: $result")
-        }
-    }
-
-    private fun showPermissionRequestDialog() {
-        Log.i("PermissionDialog", "Displaying permission request dialog.")
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Permissions Required")
-            .setMessage("This app needs permissions to access media files and show notifications.")
-            .setPositiveButton("Grant") { _, _ -> requestPermissions() }
-            .setNegativeButton("Cancel") { dialog, _ ->
-                Log.i("PermissionDialog", "User canceled the permission request.")
-                dialog.dismiss()
-            }
-            .setCancelable(false)
-            .show()
-    }
-
-    private fun requestPermissions() {
-        val permissions = when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
-                arrayOf(
-                    Manifest.permission.POST_NOTIFICATIONS,
-                    Manifest.permission.READ_MEDIA_VIDEO
-                )
-            }
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
-                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-            }
-            else -> {
-                arrayOf(
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-                )
-            }
-        }
-        Log.d("PermissionRequest", "Requesting permissions: ${permissions.joinToString()}")
-        requestPermissionsLauncher.launch(permissions)
-    }
 
     private fun selectVideo() {
         Log.d("VideoSelection", "Launching video selector.")
