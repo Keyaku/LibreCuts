@@ -15,6 +15,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import android.os.Parcelable
+import android.widget.TextView
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.tharunbirla.librecuts.databinding.ActivityMainBinding
 import com.tharunbirla.librecuts.utils.ErrorCode
 import com.tharunbirla.librecuts.utils.setBounceClickListener
@@ -72,6 +75,15 @@ class MainActivity : AppCompatActivity() {
             openUrl("https://github.com/sponsors/tharunbirla")
         }
 
+        // Onboarding / Welcome Dialog
+        val prefs = getSharedPreferences("librecuts_prefs", MODE_PRIVATE)
+        val isFirstLaunch = prefs.getBoolean("first_launch_v1", true)
+        if (isFirstLaunch) {
+            showOnboardingDialog(prefs)
+        }
+
+        // Handle shared/intent videos
+        handleIntent(intent)
     }
 
     private fun switchTab(isHome: Boolean) {
@@ -136,9 +148,90 @@ class MainActivity : AppCompatActivity() {
 
     private fun navigateToEditingScreen(videoUri: Uri) {
         Log.d("Navigation", "Navigating to editing screen with URI: $videoUri")
-        val intent = Intent(this, VideoEditingActivity::class.java)
-        intent.putExtra("VIDEO_URI", videoUri)
+        val intent = Intent(this, VideoEditingActivity::class.java).apply {
+            putExtra("VIDEO_URI", videoUri)
+            data = videoUri
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
         startActivity(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        val action = intent.action
+        val type = intent.type
+
+        if (Intent.ACTION_SEND == action && type != null) {
+            if (type.startsWith("video/")) {
+                (intent.getParcelableExtra<Parcelable>(Intent.EXTRA_STREAM) as? Uri)?.let { uri ->
+                    Log.d("SharedVideo", "Received SEND intent with video URI: $uri")
+                    navigateToEditingScreen(uri)
+                }
+            }
+        } else if ((Intent.ACTION_VIEW == action || Intent.ACTION_EDIT == action) && type != null) {
+            if (type.startsWith("video/")) {
+                intent.data?.let { uri ->
+                    Log.d("SharedVideo", "Received VIEW/EDIT intent with video URI: $uri")
+                    navigateToEditingScreen(uri)
+                }
+            }
+        }
+    }
+
+    private fun showOnboardingDialog(prefs: android.content.SharedPreferences) {
+        val dialog = android.app.Dialog(this)
+        val view = layoutInflater.inflate(R.layout.dialog_welcome_onboarding, null)
+        dialog.setContentView(view)
+        dialog.setCancelable(false)
+
+        dialog.window?.let { window ->
+            // Make dialog window background transparent so our custom layout's background card and shape render perfectly
+            window.setBackgroundDrawableResource(android.R.color.transparent)
+            
+            // Set size parameters
+            val lp = window.attributes
+            lp.width = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            lp.height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            window.attributes = lp
+        }
+
+        // Set version dynamically
+        val tvVersion = view.findViewById<TextView>(R.id.tvOnboardingVersion)
+        try {
+            val pInfo = packageManager.getPackageInfo(packageName, 0)
+            tvVersion.text = "Version ${pInfo.versionName}"
+        } catch (e: Exception) {
+            tvVersion.text = "Version 1.0-beta2"
+        }
+
+        view.findViewById<View>(R.id.layoutStarGithub).setBounceClickListener {
+            openUrl("https://github.com/tharunbirla/LibreCuts")
+        }
+
+        view.findViewById<View>(R.id.layoutSponsorGithub).setBounceClickListener {
+            openUrl("https://github.com/sponsors/tharunbirla")
+        }
+
+        view.findViewById<View>(R.id.layoutDiscord).setBounceClickListener {
+            openUrl("https://discord.gg/gwr3nE7YW")
+        }
+
+        view.findViewById<View>(R.id.layoutTroubleshooting)?.setBounceClickListener {
+            openUrl("https://github.com/tharunbirla/LibreCuts/wiki/Error-Codes-&-Troubleshooting")
+        }
+
+        view.findViewById<View>(R.id.btnOnboardingGetStarted).setBounceClickListener {
+            prefs.edit().putBoolean("first_launch_v1", false).apply()
+            dialog.dismiss()
+        }
+
+        dialog.show()
     }
 
     private fun showToast(message: String) {

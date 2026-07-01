@@ -6,10 +6,21 @@
   <br/>
 
   <a href="https://github.com/sponsors/tharunbirla">
-    <img src="https://img.shields.io/badge/Sponsor_LibreCuts-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor tharunbirla" />
+    <img src="https://img.shields.io/badge/Sponsor_LibreCuts-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" height="35" alt="Sponsor tharunbirla" />
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License" />
+    <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" height="35" alt="License" />
+  </a>
+  <br/>
+  <br/>
+  <a href="https://github.com/tharunbirla/LibreCuts/releases/latest">
+    <img src="src/images/badges/badge_github.png" alt="Get it on GitHub" height="96" />
+  </a>
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/tharunbirla/LibreCuts">
+    <img src="src/images/badges/badge_obtainium.png" height="96" alt="Get it on Obtainium" />
+  </a>
+  <a href="https://discord.gg/gwr3nE7YW">
+    <img src="src/images/badges/badge_discord.png" height="96" alt="Join Discord" />
   </a>
 </div>
 
@@ -23,11 +34,14 @@
 
 - **Trim** - Remove unwanted parts from the beginning or end of a video clip with a real-time timeline control.
 - **Overlays** - Place text or images on top of video clips to create engaging content.
-- **Audio** - Manage soundtracks effortlessly by importing custom music or audio tracks.
-- **Crop** - Adjust the aspect ration of a video.
+- **Subtitles (Captions)** - Import custom `.srt` subtitle files with fully interactive touch-based resizing and positioning directly on the video preview.
+- **Layer Management** - Easily reorder overlay layers (text and images) to control what renders on top.
+- **Audio** - Manage soundtracks effortlessly by importing custom music or audio tracks with a dedicated cancel functionality and up to 200% volume amplification.
+- **Crop** - Adjust the aspect ratio of a video.
 - **Merge** - Combine multiple video segments into a continuous sequence.
-- **Transition** - Change the orientation of a video clip.
+- **Transition** - Change the orientation of a video clip, featuring animated preview transitions in the toolbar.
 - **Speed** - Change the speed of a video clip.
+- **Hardware Acceleration** - Super-fast video exports using device hardware-accelerated `h264_mediacodec` encoding.
 
 ## 📱 Screenshots
 
@@ -91,6 +105,12 @@ LibreCuts requires the following permissions to function properly:
 - **WRITE_EXTERNAL_STORAGE**: (For older Android versions) To save edited videos.
 - **POST_NOTIFICATIONS**: To show notifications related to video editing.
 - **READ_MEDIA_AUDIO/VIDEO/IMAGES**: For accessing media files on devices running Android 13 (API level 33) and above.
+
+## 🔧 Troubleshooting & Support
+
+If you encounter any export failures, codec errors, or unexpected crashes during your editing workflow:
+- Refer to our comprehensive [Error Codes & Troubleshooting Guide](https://github.com/tharunbirla/LibreCuts/wiki/Error-Codes-&-Troubleshooting) on the Wiki.
+- Join our [Discord Community](https://discord.gg/gwr3nE7YW) for real-time support, suggestions, and app updates.
 
 ## 🤝 Contributing
 
