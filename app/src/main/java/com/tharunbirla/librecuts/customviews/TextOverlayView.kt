@@ -59,19 +59,6 @@ class TextOverlayView @JvmOverloads constructor(
             invalidate()
         }
     var onSubtitlePositionChanged: ((relativeX: Float, relativeY: Float) -> Unit)? = null
-    var onSubtitleFontSizeChanged: ((fontSize: Int) -> Unit)? = null
-
-    private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-        override fun onScale(detector: ScaleGestureDetector): Boolean {
-            val scaleFactor = detector.scaleFactor
-            val currentSize = subtitleOperation?.fontSize ?: 22
-            val newSize = (currentSize * scaleFactor).toInt().coerceIn(10, 80)
-            if (newSize != currentSize) {
-                onSubtitleFontSizeChanged?.invoke(newSize)
-            }
-            return true
-        }
-    })
 
     private var overlayOperations: List<EditOperation> = emptyList()
     private val bitmapCache = mutableMapOf<String, Bitmap>()
@@ -447,13 +434,6 @@ class TextOverlayView @JvmOverloads constructor(
             return super.onTouchEvent(event)
         }
 
-        if (event.pointerCount > 1) {
-            scaleDetector.onTouchEvent(event)
-            if (scaleDetector.isInProgress) {
-                isDraggingSubtitle = false
-                return true
-            }
-        }
 
         val videoRect = getVideoRect()
 

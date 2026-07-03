@@ -484,13 +484,6 @@ class VideoEditingActivity : AppCompatActivity() {
                         updateSubtitleOp(subOp.copy(relativeX = relX, relativeY = relY))
                     }
                 }
-                overlay.onSubtitleFontSizeChanged = { size ->
-                    val project = viewModel.project.value
-                    val subOp = project?.operations?.find { it is EditOperation.AddSubtitles } as? EditOperation.AddSubtitles
-                    if (subOp != null) {
-                        updateSubtitleOp(subOp.copy(fontSize = size))
-                    }
-                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "TextOverlayView not found in layout: ${e.message}")
@@ -871,6 +864,17 @@ class VideoEditingActivity : AppCompatActivity() {
                 }
                 toolbar.findViewById<Button>(R.id.btnSaveSubtitles)?.setBounceClickListener {
                     exitSubtitlesEditingMode()
+                }
+                toolbar.findViewById<Slider>(R.id.subtitleFontSizeSlider)?.addOnChangeListener { _, value, fromUser ->
+                    if (fromUser) {
+                        val project = viewModel.project.value
+                        val subOp = project?.operations?.find { it is EditOperation.AddSubtitles } as? EditOperation.AddSubtitles
+                        if (subOp != null) {
+                            val newSize = value.toInt()
+                            updateSubtitleOp(subOp.copy(fontSize = newSize))
+                            toolbar.findViewById<TextView>(R.id.tvSubtitleFontSizeValue)?.text = "$newSize"
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -1415,6 +1419,11 @@ class VideoEditingActivity : AppCompatActivity() {
             layoutNo?.visibility = View.GONE
             layoutHas?.visibility = View.VISIBLE
             tvFileName?.text = subOp.fileName
+
+            val slider = toolbar.findViewById<Slider>(R.id.subtitleFontSizeSlider)
+            val tvValue = toolbar.findViewById<TextView>(R.id.tvSubtitleFontSizeValue)
+            slider?.value = subOp.fontSize.toFloat().coerceIn(10f, 80f)
+            tvValue?.text = "${subOp.fontSize}"
         } else {
             layoutNo?.visibility = View.VISIBLE
             layoutHas?.visibility = View.GONE
@@ -1781,7 +1790,7 @@ class VideoEditingActivity : AppCompatActivity() {
             val txt = toolbar.findViewById<TextView>(views.second)
             if (speed == s) {
                 bg?.setBackgroundResource(R.drawable.bg_aspect_ratio_selected)
-                txt?.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.activeTool))
+                txt?.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.colorOnPrimary))
             } else {
                 bg?.setBackgroundResource(R.drawable.bg_aspect_ratio_item)
                 txt?.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.toolTextInactive))
@@ -2017,7 +2026,7 @@ class VideoEditingActivity : AppCompatActivity() {
                 resources.getColor(if (isActive) R.color.onPrimaryContainer else R.color.iconSecondary, null)
             )
             toolbar.findViewById<TextView>(views.third)?.apply {
-                setTextColor(resources.getColor(if (isActive) R.color.activeTool else R.color.toolTextInactive, null))
+                setTextColor(resources.getColor(if (isActive) R.color.colorOnPrimary else R.color.toolTextInactive, null))
                 paint.isFakeBoldText = isActive
             }
         }
@@ -3895,7 +3904,8 @@ class VideoEditingActivity : AppCompatActivity() {
                 sourceFilePath = tempInputFile.absolutePath,
                 previewOutputPath = previewOutput.absolutePath,
                 seekPositionMs = seekPos,
-                fontFilePath = fontFilePath
+                fontFilePath = fontFilePath,
+                density = resources.displayMetrics.density
             ) ?: run {
                 isRenderingPreview = false
                 updateUIInteractionState()

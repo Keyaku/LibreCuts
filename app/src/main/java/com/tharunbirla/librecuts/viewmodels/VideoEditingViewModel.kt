@@ -503,6 +503,7 @@ class VideoEditingViewModel : ViewModel() {
                         it is EditOperation.AddImageOverlay && updatedOp is EditOperation.AddImageOverlay -> it.id == updatedOp.id
                         it is EditOperation.AddBackgroundAudio && updatedOp is EditOperation.AddBackgroundAudio -> it.id == updatedOp.id
                         it is EditOperation.Merge && updatedOp is EditOperation.Merge -> it.id == updatedOp.id
+                        it is EditOperation.AddSubtitles && updatedOp is EditOperation.AddSubtitles -> it.id == updatedOp.id
                         else -> false
                     }
                 }
@@ -754,7 +755,8 @@ class VideoEditingViewModel : ViewModel() {
         operations: List<EditOperation>,
         fontFilePath: String?,
         inputLabel: String = "[0:v]",
-        imageInputIndices: List<Pair<Int, EditOperation.AddImageOverlay>> = emptyList()
+        imageInputIndices: List<Pair<Int, EditOperation.AddImageOverlay>> = emptyList(),
+        density: Float = 1.0f
     ): Pair<List<String>, String> {
         val stages = mutableListOf<String>()
         var currentLabel = inputLabel
@@ -841,9 +843,9 @@ class VideoEditingViewModel : ViewModel() {
                             }
                         }
 
-                        val boxPart = ":box=1:boxcolor='0x00000080':boxborderw=8"
+                        val boxPart = ":box=1:boxcolor='0x00000080':boxborderw=${(8 * density).toInt()}"
                         
-                        val filterExpr = "drawtext=${fontPart}text='$escapedText':fontcolor='white':fontsize=${op.fontSize}:${posPart}${boxPart}$enablePart"
+                        val filterExpr = "drawtext=${fontPart}text='$escapedText':fontcolor='white':fontsize=${(op.fontSize * density).toInt()}:${posPart}${boxPart}$enablePart"
                         
                         val nextLabel = "[v$stageIndex]"
                         stages.add("$currentLabel$filterExpr$nextLabel")
@@ -877,6 +879,7 @@ class VideoEditingViewModel : ViewModel() {
         context: Context? = null
     ): String? {
         val currentProject = _project.value ?: return null
+        val density = context?.resources?.displayMetrics?.density ?: 1.0f
 
         if (currentProject.operations.isEmpty()) {
             return "-y -i \"$sourceFilePath\" -c copy \"$outputFilePath\""
@@ -1190,7 +1193,8 @@ class VideoEditingViewModel : ViewModel() {
                 operations = videoOps,
                 fontFilePath = fontFilePath,
                 inputLabel = currentVideoLabel,
-                imageInputIndices = imageInputIndices
+                imageInputIndices = imageInputIndices,
+                density = density
             )
             filterParts.addAll(sourceVideoStages)
             val finalVideoLabel = "[fmtv]"
@@ -1289,7 +1293,8 @@ class VideoEditingViewModel : ViewModel() {
             operations = videoOps,
             fontFilePath = fontFilePath,
             inputLabel = "[0:v]",
-            imageInputIndices = imageInputIndices
+            imageInputIndices = imageInputIndices,
+            density = density
         )
         filterComplexParts.addAll(videoStages)
 
@@ -1418,7 +1423,8 @@ class VideoEditingViewModel : ViewModel() {
         sourceFilePath: String,
         previewOutputPath: String,
         seekPositionMs: Long,
-        fontFilePath: String? = null
+        fontFilePath: String? = null,
+        density: Float = 1.0f
     ): String? {
         val currentProject = _project.value ?: return null
         val operations = currentProject.operations
@@ -1442,7 +1448,11 @@ class VideoEditingViewModel : ViewModel() {
         }
 
         // Build filter_complex for video operations
-        val (videoStages, finalLabel) = buildVideoFilterStages(videoOps, fontFilePath)
+        val (videoStages, finalLabel) = buildVideoFilterStages(
+            operations = videoOps,
+            fontFilePath = fontFilePath,
+            density = density
+        )
         if (videoStages.isNotEmpty()) {
             cmd.append(" -filter_complex \"${videoStages.joinToString(";")}\"")
             cmd.append(" -map \"$finalLabel\" -map 0:a?")
