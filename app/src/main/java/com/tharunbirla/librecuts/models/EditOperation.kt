@@ -50,10 +50,14 @@ sealed class EditOperation : Serializable {
      */
     data class Crop(
         val aspectRatio: String,
+        val xFraction: Float = 0f,
+        val yFraction: Float = 0f,
+        val wFraction: Float = 1f,
+        val hFraction: Float = 1f,
         val id: String = System.nanoTime().toString()
     ) : EditOperation() {
         init {
-            require(aspectRatio in listOf("16:9", "9:16", "1:1")) { 
+            require(aspectRatio in listOf("16:9", "9:16", "1:1", "Custom")) { 
                 "Unsupported aspect ratio: $aspectRatio" 
             }
         }

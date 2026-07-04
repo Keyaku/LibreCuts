@@ -142,7 +142,21 @@ class VideoEditingViewModel : ViewModel() {
         }
     }
 
-    fun addCropOperation(aspectRatio: String) = addOperation(EditOperation.Crop(aspectRatio))
+    fun addCropOperation(
+        aspectRatio: String,
+        xFraction: Float = 0f,
+        yFraction: Float = 0f,
+        wFraction: Float = 1f,
+        hFraction: Float = 1f
+    ) = addOperation(
+        EditOperation.Crop(
+            aspectRatio = aspectRatio,
+            xFraction = xFraction,
+            yFraction = yFraction,
+            wFraction = wFraction,
+            hFraction = hFraction
+        )
+    )
 
     fun addTextOperation(
         text: String,
@@ -504,6 +518,8 @@ class VideoEditingViewModel : ViewModel() {
                         it is EditOperation.AddBackgroundAudio && updatedOp is EditOperation.AddBackgroundAudio -> it.id == updatedOp.id
                         it is EditOperation.Merge && updatedOp is EditOperation.Merge -> it.id == updatedOp.id
                         it is EditOperation.AddSubtitles && updatedOp is EditOperation.AddSubtitles -> it.id == updatedOp.id
+                        it is EditOperation.Crop && updatedOp is EditOperation.Crop -> it.id == updatedOp.id
+                        it is EditOperation.Trim && updatedOp is EditOperation.Trim -> it.id == updatedOp.id
                         else -> false
                     }
                 }
@@ -683,10 +699,17 @@ class VideoEditingViewModel : ViewModel() {
     // ── Private filter-building helpers ─────────────────────────────────────
 
     /** Build a crop filter expression for an aspect ratio. */
-    private fun buildCropFilterExpr(aspectRatio: String): String? = when (aspectRatio) {
+    private fun buildCropFilterExpr(op: EditOperation.Crop): String? = when (op.aspectRatio) {
         "16:9" -> "crop=iw:iw*9/16"
         "9:16" -> "crop=ih*9/16:ih"
         "1:1"  -> "crop=min(iw\\,ih):min(iw\\,ih)"
+        "Custom" -> {
+            val w = String.format(java.util.Locale.US, "trunc(iw*%.4f/2)*2", op.wFraction)
+            val h = String.format(java.util.Locale.US, "trunc(ih*%.4f/2)*2", op.hFraction)
+            val x = String.format(java.util.Locale.US, "trunc(iw*%.4f/2)*2", op.xFraction)
+            val y = String.format(java.util.Locale.US, "trunc(ih*%.4f/2)*2", op.yFraction)
+            "crop=w=$w:h=$h:x=min($x\\,iw-($w)):y=min($y\\,ih-($h))"
+        }
         else   -> null
     }
 
@@ -765,7 +788,7 @@ class VideoEditingViewModel : ViewModel() {
         for (op in operations) {
             when (op) {
                 is EditOperation.Crop -> {
-                    val filterExpr = buildCropFilterExpr(op.aspectRatio)
+                    val filterExpr = buildCropFilterExpr(op)
                     if (filterExpr != null) {
                         val nextLabel = "[v$stageIndex]"
                         stages.add("$currentLabel$filterExpr$nextLabel")

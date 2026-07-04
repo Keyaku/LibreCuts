@@ -22,6 +22,15 @@
             android:layout_marginBottom="24dp"
             android:paddingHorizontal="24dp">
 
+            <ImageButton
+                android:id="@+id/btnCloseSheet"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_alignParentStart="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_close_24"
+                app:tint="@color/activeTool" />
+
             <TextView
                 android:id="@+id/tvTitleCrop"
                 android:layout_width="wrap_content"
@@ -33,12 +42,12 @@
                 android:textSize="18sp" />
 
             <ImageButton
-                android:id="@+id/btnCloseSheet"
+                android:id="@+id/btnCropDone"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:layout_alignParentEnd="true"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_close_24"
+                android:src="@drawable/ic_check_24"
                 app:tint="@color/activeTool" />
         </RelativeLayout>
 
@@ -121,6 +130,7 @@
                     android:id="@+id/frameAspectRatio3"
                     android:layout_width="72dp"
                     android:layout_height="wrap_content"
+                    android:layout_marginEnd="12dp"
                     android:gravity="center"
                     android:orientation="vertical">
                     <FrameLayout
@@ -142,6 +152,35 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:text="1:1"
+                        android:textColor="@color/toolTextInactive"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/frameAspectRatioCustom"
+                    android:layout_width="72dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="vertical">
+                    <FrameLayout
+                        android:id="@+id/bgCustom"
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:background="@drawable/bg_aspect_ratio_item">
+                        <ImageView
+                            android:id="@+id/icCustom"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_crop_24"
+                            app:tint="@color/iconSecondary" />
+                    </FrameLayout>
+                    <TextView
+                        android:id="@+id/txtCustom"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Custom"
                         android:textColor="@color/toolTextInactive"
                         android:textSize="11sp" />
                 </LinearLayout>

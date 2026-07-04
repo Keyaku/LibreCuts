@@ -171,6 +171,8 @@ class VideoEditingActivity : AppCompatActivity() {
     private var audioEditingToolbar: View? = null
     private var speedEditingToolbar: View? = null
     private var cropEditingToolbar: View? = null
+    private var cropOverlayView: com.tharunbirla.librecuts.customviews.CropOverlayView? = null
+    private var initialCropOperation: com.tharunbirla.librecuts.models.EditOperation.Crop? = null
     private var subtitlesEditingToolbar: View? = null
     private var isSubtitlesEditingActive = false
 
@@ -619,6 +621,29 @@ class VideoEditingActivity : AppCompatActivity() {
             null
         }
 
+        cropOverlayView = try {
+            findViewById<com.tharunbirla.librecuts.customviews.CropOverlayView>(R.id.cropOverlayView)?.also { overlay ->
+                overlay.onCropBoundsChanged = { x, y, w, h ->
+                    val existing = viewModel.project.value?.operations
+                        ?.filterIsInstance<com.tharunbirla.librecuts.models.EditOperation.Crop>()
+                        ?.lastOrNull()
+                    if (existing != null && existing.aspectRatio == "Custom") {
+                        viewModel.updateOperation(existing.copy(
+                            xFraction = x,
+                            yFraction = y,
+                            wFraction = w,
+                            hFraction = h
+                        ))
+                    } else {
+                        viewModel.addCropOperation("Custom", x, y, w, h)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "CropOverlayView not found: ${e.message}")
+            null
+        }
+
         imageEditingToolbar = try {
             findViewById<View>(R.id.imageEditingToolbar)?.also { toolbar ->
                 toolbar.findViewById<ImageButton>(R.id.btnImageCancel)?.setBounceClickListener {
@@ -828,19 +853,74 @@ class VideoEditingActivity : AppCompatActivity() {
         cropEditingToolbar = try {
             findViewById<View>(R.id.cropEditingToolbar)?.also { toolbar ->
                 toolbar.findViewById<ImageButton>(R.id.btnCloseSheet)?.setBounceClickListener {
+                    val currentCrop = viewModel.project.value?.operations
+                        ?.filterIsInstance<com.tharunbirla.librecuts.models.EditOperation.Crop>()
+                        ?.lastOrNull()
+                    if (currentCrop != null) {
+                        val init = initialCropOperation
+                        if (init == null) {
+                            viewModel.removeOperation(currentCrop.id)
+                        } else {
+                            viewModel.addCropOperation(
+                                aspectRatio = init.aspectRatio,
+                                xFraction = init.xFraction,
+                                yFraction = init.yFraction,
+                                wFraction = init.wFraction,
+                                hFraction = init.hFraction
+                            )
+                        }
+                    }
+                    exitCropEditingMode()
+                }
+                toolbar.findViewById<ImageButton>(R.id.btnCropDone)?.setBounceClickListener {
                     exitCropEditingMode()
                 }
                 toolbar.findViewById<LinearLayout>(R.id.frameAspectRatio1)?.setBounceClickListener {
+                    cropOverlayView?.visibility = View.GONE
                     viewModel.addCropOperation("16:9")
                     updateCropUi("16:9")
                 }
                 toolbar.findViewById<LinearLayout>(R.id.frameAspectRatio2)?.setBounceClickListener {
+                    cropOverlayView?.visibility = View.GONE
                     viewModel.addCropOperation("9:16")
                     updateCropUi("9:16")
                 }
                 toolbar.findViewById<LinearLayout>(R.id.frameAspectRatio3)?.setBounceClickListener {
+                    cropOverlayView?.visibility = View.GONE
                     viewModel.addCropOperation("1:1")
                     updateCropUi("1:1")
+                }
+                toolbar.findViewById<LinearLayout>(R.id.frameAspectRatioCustom)?.setBounceClickListener {
+                    val existing = viewModel.project.value?.operations
+                        ?.filterIsInstance<com.tharunbirla.librecuts.models.EditOperation.Crop>()
+                        ?.lastOrNull()
+                    
+                    val x: Float
+                    val y: Float
+                    val w: Float
+                    val h: Float
+                    if (existing != null && existing.aspectRatio == "Custom") {
+                        x = existing.xFraction
+                        y = existing.yFraction
+                        w = existing.wFraction
+                        h = existing.hFraction
+                    } else if (existing != null) {
+                        val bounds = getPresetCropBounds(existing.aspectRatio)
+                        x = bounds.left
+                        y = bounds.top
+                        w = bounds.width()
+                        h = bounds.height()
+                    } else {
+                        x = 0.1f
+                        y = 0.1f
+                        w = 0.8f
+                        h = 0.8f
+                    }
+                    
+                    cropOverlayView?.setCropBounds(x, y, w, h)
+                    cropOverlayView?.visibility = View.VISIBLE
+                    viewModel.addCropOperation("Custom", x, y, w, h)
+                    updateCropUi("Custom")
                 }
             }
         } catch (e: Exception) {
@@ -1188,12 +1268,65 @@ class VideoEditingActivity : AppCompatActivity() {
     }
 
     private fun applyCropPreview(aspectRatio: String) {
-        val targetRatio = when (aspectRatio) {
-            "16:9" -> 16f / 9f
-            "9:16" -> 9f / 16f
-            "1:1" -> 1f
-            "4:5" -> 4f / 5f
-            else -> return
+        if (aspectRatio == "Custom" && cropEditingToolbar?.visibility == View.VISIBLE) {
+            resetCropPreview()
+            return
+        }
+
+        val format = if (::player.isInitialized) player.videoFormat else null
+        val rotation = format?.rotationDegrees ?: 0
+        val videoWidth = if (rotation == 90 || rotation == 270) format?.height ?: 1 else format?.width ?: 1
+        val videoHeight = if (rotation == 90 || rotation == 270) format?.width ?: 1 else format?.height ?: 1
+
+        val cropOp = viewModel.project.value?.operations
+            ?.filterIsInstance<com.tharunbirla.librecuts.models.EditOperation.Crop>()
+            ?.lastOrNull()
+
+        // Get coordinates depending on aspect ratio
+        val xFrac: Float
+        val yFrac: Float
+        val wFrac: Float
+        val hFrac: Float
+        
+        when (aspectRatio) {
+            "16:9" -> {
+                val bounds = getPresetCropBounds("16:9")
+                xFrac = bounds.left
+                yFrac = bounds.top
+                wFrac = bounds.width()
+                hFrac = bounds.height()
+            }
+            "9:16" -> {
+                val bounds = getPresetCropBounds("9:16")
+                xFrac = bounds.left
+                yFrac = bounds.top
+                wFrac = bounds.width()
+                hFrac = bounds.height()
+            }
+            "1:1" -> {
+                val bounds = getPresetCropBounds("1:1")
+                xFrac = bounds.left
+                yFrac = bounds.top
+                wFrac = bounds.width()
+                hFrac = bounds.height()
+            }
+            "Custom" -> {
+                if (cropOp != null) {
+                    xFrac = cropOp.xFraction
+                    yFrac = cropOp.yFraction
+                    wFrac = cropOp.wFraction
+                    hFrac = cropOp.hFraction
+                } else {
+                    xFrac = 0f
+                    yFrac = 0f
+                    wFrac = 1f
+                    hFrac = 1f
+                }
+            }
+            else -> {
+                resetCropPreview()
+                return
+            }
         }
 
         playerView.post {
@@ -1202,33 +1335,47 @@ class VideoEditingActivity : AppCompatActivity() {
             if (containerWidth <= 0 || containerHeight <= 0) return@post
 
             val containerRatio = containerWidth / containerHeight
-            var targetWidth = containerWidth
-            var targetHeight = containerHeight
+            val targetRatio = (videoWidth.toFloat() * wFrac) / (videoHeight.toFloat() * hFrac)
 
+            // 1. Calculate fitted crop window dimensions inside container
+            val fitWidth: Float
+            val fitHeight: Float
             if (targetRatio > containerRatio) {
-                // Wider than container — fit width, shrink height
-                targetHeight = containerWidth / targetRatio
+                fitWidth = containerWidth
+                fitHeight = containerWidth / targetRatio
             } else {
-                // Taller than container — fit height, shrink width
-                targetWidth = containerHeight * targetRatio
+                fitWidth = containerHeight * targetRatio
+                fitHeight = containerHeight
             }
 
+            // 2. Scale up full playerView size so that cropped fraction matches fitted dimensions
+            val fullWidth = if (wFrac > 0f) fitWidth / wFrac else fitWidth
+            val fullHeight = if (hFrac > 0f) fitHeight / hFrac else fitHeight
+
             val params = playerView.layoutParams as FrameLayout.LayoutParams
-            params.width = targetWidth.toInt()
-            params.height = targetHeight.toInt()
+            params.width = fullWidth.toInt()
+            params.height = fullHeight.toInt()
             params.gravity = Gravity.CENTER
             playerView.layoutParams = params
 
-            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM // RESIZE_MODE_ZOOM
+            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
 
-            val overlays = listOf(textOverlayView, draggableTextOverlay, imageOverlayView, draggableImageOverlay)
+            // 3. Translate playerView so the crop window is centered inside the container
+            val transX = -fullWidth * (xFrac + wFrac / 2f - 0.5f)
+            val transY = -fullHeight * (yFrac + hFrac / 2f - 0.5f)
+            playerView.translationX = transX
+            playerView.translationY = transY
+
+            val overlays = listOf(textOverlayView, draggableTextOverlay, imageOverlayView, draggableImageOverlay, cropOverlayView)
             for (overlay in overlays) {
                 overlay?.let {
                     val overlayParams = it.layoutParams as FrameLayout.LayoutParams
-                    overlayParams.width = targetWidth.toInt()
-                    overlayParams.height = targetHeight.toInt()
+                    overlayParams.width = fullWidth.toInt()
+                    overlayParams.height = fullHeight.toInt()
                     overlayParams.gravity = Gravity.CENTER
                     it.layoutParams = overlayParams
+                    it.translationX = transX
+                    it.translationY = transY
                 }
             }
         }
@@ -1242,9 +1389,11 @@ class VideoEditingActivity : AppCompatActivity() {
             params.gravity = Gravity.NO_GRAVITY
             playerView.layoutParams = params
 
-            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT // RESIZE_MODE_FIT
+            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            playerView.translationX = 0f
+            playerView.translationY = 0f
 
-            val overlays = listOf(textOverlayView, draggableTextOverlay, imageOverlayView, draggableImageOverlay)
+            val overlays = listOf(textOverlayView, draggableTextOverlay, imageOverlayView, draggableImageOverlay, cropOverlayView)
             for (overlay in overlays) {
                 overlay?.let {
                     val overlayParams = it.layoutParams as FrameLayout.LayoutParams
@@ -1252,6 +1401,8 @@ class VideoEditingActivity : AppCompatActivity() {
                     overlayParams.height = FrameLayout.LayoutParams.MATCH_PARENT
                     overlayParams.gravity = Gravity.NO_GRAVITY
                     it.layoutParams = overlayParams
+                    it.translationX = 0f
+                    it.translationY = 0f
                 }
             }
         }
@@ -1723,16 +1874,60 @@ class VideoEditingActivity : AppCompatActivity() {
         setActiveToolButton(0)
     }
 
+    private fun getPresetCropBounds(aspectRatio: String): android.graphics.RectF {
+        val rect = android.graphics.RectF(0f, 0f, 1f, 1f)
+        val format = if (::player.isInitialized) player.videoFormat else null
+        if (format == null || format.width <= 0 || format.height <= 0) return rect
+        val rotation = format.rotationDegrees
+        val videoWidth = if (rotation == 90 || rotation == 270) format.height else format.width
+        val videoHeight = if (rotation == 90 || rotation == 270) format.width else format.height
+        val videoRatio = videoWidth.toFloat() / videoHeight
+        val targetRatio = when (aspectRatio) {
+            "16:9" -> 16f / 9f
+            "9:16" -> 9f / 16f
+            "1:1" -> 1f
+            else -> return rect
+        }
+        if (videoRatio > targetRatio) {
+            val w = targetRatio / videoRatio
+            val x = (1f - w) / 2f
+            rect.set(x, 0f, x + w, 1f)
+        } else {
+            val h = videoRatio / targetRatio
+            val y = (1f - h) / 2f
+            rect.set(0f, y, 1f, y + h)
+        }
+        return rect
+    }
+
     private fun enterCropEditingMode() {
         closeActiveEditingModes()
         cropEditingToolbar?.visibility = View.VISIBLE
         editingControlsWrapper.visibility = View.GONE
         
-        val currentRatio = viewModel.project.value?.operations
+        val cropOp = viewModel.project.value?.operations
             ?.filterIsInstance<com.tharunbirla.librecuts.models.EditOperation.Crop>()
-            ?.lastOrNull()?.aspectRatio ?: "Original"
+            ?.lastOrNull()
+
+        initialCropOperation = cropOp
+        val currentRatio = cropOp?.aspectRatio ?: "Original"
             
         updateCropUi(currentRatio)
+        resetCropPreview()
+
+        if (currentRatio == "Custom" && cropOp != null) {
+            cropOverlayView?.setCropBounds(
+                cropOp.xFraction,
+                cropOp.yFraction,
+                cropOp.wFraction,
+                cropOp.hFraction
+            )
+            cropOverlayView?.visibility = View.VISIBLE
+        } else {
+            val bounds = getPresetCropBounds(currentRatio)
+            cropOverlayView?.setCropBounds(bounds.left, bounds.top, bounds.width(), bounds.height())
+            cropOverlayView?.visibility = View.GONE
+        }
         
         if (::player.isInitialized && player.isPlaying) {
             player.pause()
@@ -1741,8 +1936,18 @@ class VideoEditingActivity : AppCompatActivity() {
 
     private fun exitCropEditingMode() {
         cropEditingToolbar?.visibility = View.GONE
+        cropOverlayView?.visibility = View.GONE
         editingControlsWrapper.visibility = View.VISIBLE
         setActiveToolButton(0)
+
+        val cropOp = viewModel.project.value?.operations
+            ?.filterIsInstance<com.tharunbirla.librecuts.models.EditOperation.Crop>()
+            ?.lastOrNull()
+        if (cropOp != null) {
+            applyCropPreview(cropOp.aspectRatio)
+        } else {
+            resetCropPreview()
+        }
     }
 
     private fun showSpeedEditingToolbar(index: Int, item: com.tharunbirla.librecuts.models.EditOperation.MergeItem) {
@@ -2014,7 +2219,8 @@ class VideoEditingActivity : AppCompatActivity() {
         val ratios = mapOf(
             "16:9" to Triple(R.id.bg16_9, R.id.ic16_9, R.id.txt16_9),
             "9:16" to Triple(R.id.bg9_16, R.id.ic9_16, R.id.txt9_16),
-            "1:1" to Triple(R.id.bg1_1, R.id.ic1_1, R.id.txt1_1)
+            "1:1" to Triple(R.id.bg1_1, R.id.ic1_1, R.id.txt1_1),
+            "Custom" to Triple(R.id.bgCustom, R.id.icCustom, R.id.txtCustom)
         )
 
         ratios.forEach { (key, views) ->
@@ -2030,6 +2236,8 @@ class VideoEditingActivity : AppCompatActivity() {
                 paint.isFakeBoldText = isActive
             }
         }
+
+        cropOverlayView?.visibility = if (ratio == "Custom") View.VISIBLE else View.GONE
     }
 
     private fun splitSelectedVideo() {
@@ -2567,6 +2775,7 @@ class VideoEditingActivity : AppCompatActivity() {
                             draggableTextOverlay?.setVideoSize(displayWidth, displayHeight)
                             imageOverlayView?.setVideoSize(displayWidth, displayHeight)
                             draggableImageOverlay?.setVideoSize(displayWidth, displayHeight)
+                            cropOverlayView?.setVideoSize(displayWidth, displayHeight)
                         }
                         updateUIInteractionState()
                     }
@@ -2589,6 +2798,7 @@ class VideoEditingActivity : AppCompatActivity() {
                         draggableTextOverlay?.setVideoSize(displayWidth, displayHeight)
                         imageOverlayView?.setVideoSize(displayWidth, displayHeight)
                         draggableImageOverlay?.setVideoSize(displayWidth, displayHeight)
+                        cropOverlayView?.setVideoSize(displayWidth, displayHeight)
                     }
                 }
 
