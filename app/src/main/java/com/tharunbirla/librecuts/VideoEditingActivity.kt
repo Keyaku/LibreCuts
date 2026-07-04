@@ -134,6 +134,8 @@ class VideoEditingActivity : AppCompatActivity() {
     private var chunkDurationsMs = listOf<Long>()
     private var originalMainVideoDurationMs: Long = 0L
     private val frameCache = mutableMapOf<Uri, List<Bitmap>>()
+    private var activeDirectoryTitleView: TextView? = null
+    private var activeDirectoryPathView: TextView? = null
 
     // Drag-to-rearrange clips state
     private var isDraggingSegment = false
@@ -2494,6 +2496,26 @@ class VideoEditingActivity : AppCompatActivity() {
                     }
                 }
             }
+        } else if (requestCode == PICK_DIRECTORY_REQUEST && resultCode == Activity.RESULT_OK) {
+            data?.data?.let { treeUri ->
+                try {
+                    val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    contentResolver.takePersistableUriPermission(treeUri, takeFlags)
+
+                    val sharedPreferences = getSharedPreferences("librecuts_prefs", Context.MODE_PRIVATE)
+                    sharedPreferences.edit().putString("export_directory_uri", treeUri.toString()).apply()
+
+                    val activeTitle = activeDirectoryTitleView
+                    val activePath = activeDirectoryPathView
+                    if (activeTitle != null && activePath != null) {
+                        updateExportDirectoryUi(activeTitle, activePath)
+                    }
+                    Toast.makeText(this, "Export location updated successfully!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error saving export directory: ${e.message}", e)
+                    Toast.makeText(this, "Failed to select folder", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -2705,6 +2727,24 @@ class VideoEditingActivity : AppCompatActivity() {
             bottomSheetDialog.dismiss()
         }
 
+        val layoutExportDirectory = sheetView.findViewById<LinearLayout>(R.id.layoutExportDirectory)
+        val tvExportDirectoryTitle = sheetView.findViewById<TextView>(R.id.tvExportDirectoryTitle)
+        val tvExportDirectoryPath = sheetView.findViewById<TextView>(R.id.tvExportDirectoryPath)
+
+        activeDirectoryTitleView = tvExportDirectoryTitle
+        activeDirectoryPathView = tvExportDirectoryPath
+        updateExportDirectoryUi(tvExportDirectoryTitle, tvExportDirectoryPath)
+
+        layoutExportDirectory.setBounceClickListener {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            startActivityForResult(intent, PICK_DIRECTORY_REQUEST)
+        }
+
+        bottomSheetDialog.setOnDismissListener {
+            activeDirectoryTitleView = null
+            activeDirectoryPathView = null
+        }
+
         bottomSheetDialog.setContentView(sheetView)
         bottomSheetDialog.show()
     }
@@ -2712,28 +2752,54 @@ class VideoEditingActivity : AppCompatActivity() {
     private fun exportVideoFile(uri: Uri) {
         exportJob = lifecycleScope.launch {
             var outputFile: File? = null
+            var customFileUri: Uri? = null
             try {
                 viewModel.startExport()
                 
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    val outputDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    if (!outputDir.exists()) outputDir.mkdirs()
-    
-                    val file = File(outputDir, "video_${System.currentTimeMillis()}.mp4")
-                    outputFile = file
+                    val sharedPreferences = getSharedPreferences("librecuts_prefs", Context.MODE_PRIVATE)
+                    val customUriString = sharedPreferences.getString("export_directory_uri", null)
                     val sourceFile = File(tempInputFile.absolutePath)
+                    val totalSize = sourceFile.length()
+                    
+                    if (customUriString != null) {
+                        try {
+                            val treeUri = Uri.parse(customUriString)
+                            val parentUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                                treeUri,
+                                android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+                            )
+                            customFileUri = android.provider.DocumentsContract.createDocument(
+                                contentResolver,
+                                parentUri,
+                                "video/mp4",
+                                "LibreCuts_${System.currentTimeMillis()}.mp4"
+                            )
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to create SAF file: ${e.message}, falling back to default", e)
+                        }
+                    }
+                    
+                    val outputStream = if (customFileUri != null) {
+                        contentResolver.openOutputStream(customFileUri!!)
+                    } else {
+                        // Default fallback: Create Downloads/LibreCuts directory
+                        val outputDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "LibreCuts")
+                        if (!outputDir.exists()) outputDir.mkdirs()
+                        val file = File(outputDir, "video_${System.currentTimeMillis()}.mp4")
+                        outputFile = file
+                        java.io.FileOutputStream(file)
+                    }
                     
                     val input = java.io.FileInputStream(sourceFile)
-                    val output = java.io.FileOutputStream(file)
                     val buffer = ByteArray(8192)
                     var bytesRead: Int
                     var totalBytesRead = 0L
-                    val totalSize = sourceFile.length()
                     
                     var lastProgressUpdate = System.currentTimeMillis()
-    
+                    
                     input.use { i ->
-                        output.use { o ->
+                        outputStream?.use { o ->
                             while (i.read(buffer).also { bytesRead = it } >= 0) {
                                 if (!isActive) {
                                     throw kotlinx.coroutines.CancellationException("Export cancelled")
@@ -2756,21 +2822,40 @@ class VideoEditingActivity : AppCompatActivity() {
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
                         viewModel.updateExportProgress(100)
                         viewModel.finishExport()
+                        val displayPath = if (customFileUri != null) {
+                            "Custom Folder"
+                        } else {
+                            outputFile?.absolutePath ?: "Downloads/LibreCuts"
+                        }
                         Toast.makeText(
                             this@VideoEditingActivity,
-                            "Video exported: ${file.absolutePath}",
+                            "Video exported: $displayPath",
                             Toast.LENGTH_LONG
                         ).show()
                     }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 outputFile?.let { if (it.exists()) it.delete() }
+                customFileUri?.let {
+                    try {
+                        android.provider.DocumentsContract.deleteDocument(contentResolver, it)
+                    } catch (ex: Exception) {
+                        Log.w(TAG, "Failed to delete cancelled custom file: ${ex.message}")
+                    }
+                }
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     viewModel.exportError("Export cancelled")
                     Toast.makeText(this@VideoEditingActivity, "Export cancelled", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 outputFile?.let { if (it.exists()) it.delete() }
+                customFileUri?.let {
+                    try {
+                        android.provider.DocumentsContract.deleteDocument(contentResolver, it)
+                    } catch (ex: Exception) {
+                        Log.w(TAG, "Failed to delete failed custom file: ${ex.message}")
+                    }
+                }
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     viewModel.exportError(e.message ?: "Export failed")
                 }
@@ -2789,6 +2874,37 @@ class VideoEditingActivity : AppCompatActivity() {
         exportJob?.cancel()
         viewModel.exportError("Export cancelled")
         Toast.makeText(this, "Export cancelled", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateExportDirectoryUi(titleView: TextView, pathView: TextView) {
+        val sharedPreferences = getSharedPreferences("librecuts_prefs", Context.MODE_PRIVATE)
+        val customUriString = sharedPreferences.getString("export_directory_uri", null)
+        if (customUriString != null) {
+            val customUri = Uri.parse(customUriString)
+            val displayName = getDocumentFolderName(customUri) ?: "Custom Folder"
+            titleView.text = displayName
+            pathView.text = customUri.path ?: customUriString
+        } else {
+            titleView.text = "LibreCuts (Default)"
+            pathView.text = "Movies/LibreCuts"
+        }
+    }
+
+    private fun getDocumentFolderName(uri: Uri): String? {
+        return try {
+            val documentUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                uri,
+                android.provider.DocumentsContract.getTreeDocumentId(uri)
+            )
+            contentResolver.query(documentUri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) cursor.getString(index) else null
+                } else null
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun setupExoPlayer() {
@@ -4071,11 +4187,38 @@ class VideoEditingActivity : AppCompatActivity() {
     }
 
     private fun saveVideoToGallery(videoFile: File): Uri? {
+        val sharedPreferences = getSharedPreferences("librecuts_prefs", Context.MODE_PRIVATE)
+        val customUriString = sharedPreferences.getString("export_directory_uri", null)
+        if (customUriString != null) {
+            try {
+                val treeUri = Uri.parse(customUriString)
+                val parentUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                    treeUri,
+                    android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+                )
+                val newFileUri = android.provider.DocumentsContract.createDocument(
+                    contentResolver,
+                    parentUri,
+                    "video/mp4",
+                    "LibreCuts_${System.currentTimeMillis()}.mp4"
+                )
+                if (newFileUri != null) {
+                    contentResolver.openOutputStream(newFileUri)?.use { output ->
+                        videoFile.inputStream().use { input -> input.copyTo(output) }
+                    }
+                    return newFileUri
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving to custom directory: ${e.message}, falling back to default", e)
+            }
+        }
+
+        // Fallback or Default to Movies/LibreCuts
         return try {
             val contentValues = android.content.ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, "LibreCuts_${System.currentTimeMillis()}.mp4")
                 put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/LibreCuts")
             }
             val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
             uri?.let {
@@ -4085,7 +4228,7 @@ class VideoEditingActivity : AppCompatActivity() {
                 it
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving to gallery: ${e.message}", e)
+            Log.e(TAG, "Error saving to default gallery: ${e.message}", e)
             null
         }
     }
@@ -4381,6 +4524,7 @@ class VideoEditingActivity : AppCompatActivity() {
         private const val PICK_AUDIO_REQUEST = 2
         private const val PICK_IMAGE_REQUEST = 3
         private const val PICK_SRT_REQUEST = 4
+        private const val PICK_DIRECTORY_REQUEST = 5
     }
 }
 
