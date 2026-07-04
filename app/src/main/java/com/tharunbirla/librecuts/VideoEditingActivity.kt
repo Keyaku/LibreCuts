@@ -125,6 +125,7 @@ class VideoEditingActivity : AppCompatActivity() {
     private var videoFileName: String = ""
     private lateinit var tempInputFile: File
     private var frameExtractionJob: Job? = null
+    private var exportJob: Job? = null
     private val activeRenderJobs = mutableListOf<Job>()
     private var pendingRenderRunnable: Runnable? = null
     private var isVideoLoaded = false
@@ -367,6 +368,9 @@ class VideoEditingActivity : AppCompatActivity() {
         loadingScreen.visibility = View.VISIBLE
         isImportLoading = true
         exportScreen = findViewById(R.id.exportScreen)
+        exportScreen.findViewById<View>(R.id.btnCancelExport)?.setBounceClickListener {
+            cancelExport()
+        }
         previewLoadingOverlay = findViewById(R.id.previewLoadingOverlay)
         lottieAnimationView = findViewById(R.id.lottieAnimation)
         textTrackContainer = findViewById(R.id.textTrackContainer)
@@ -2526,12 +2530,14 @@ class VideoEditingActivity : AppCompatActivity() {
                     "Check that assets/fonts/Roboto-Regular.ttf exists.")
         }
 
-        lifecycleScope.launch {
+        exportJob = lifecycleScope.launch {
+            var tempOutputFile: File? = null
+            var concatFile: File? = null
             try {
                 viewModel.startExport()
 
                 val sourceFilePath = tempInputFile.absolutePath
-                val tempOutputFile = File(cacheDir, "temp_video_${System.currentTimeMillis()}.mp4")
+                tempOutputFile = File(cacheDir, "temp_video_${System.currentTimeMillis()}.mp4")
                 val tempOutputPath = tempOutputFile.absolutePath
 
                 // ── THE FIX: pass fontFilePath as the third argument ──────────────
@@ -2550,7 +2556,6 @@ class VideoEditingActivity : AppCompatActivity() {
                 Log.d(TAG, "Raw FFmpeg command: $ffmpegCommand")
 
                 // Handle merge operations
-                var concatFile: File? = null
                 val currentProject = viewModel.project.value
                 if (currentProject != null && ffmpegCommand.contains("(CONCAT_LIST:")) {
                     val cmdSnapshot = ffmpegCommand  // capture for closure — var can't be smart-cast
@@ -2626,7 +2631,14 @@ class VideoEditingActivity : AppCompatActivity() {
                         Toast.makeText(this@VideoEditingActivity, "Export cancelled", Toast.LENGTH_SHORT).show()
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                tempOutputFile?.let { if (it.exists()) it.delete() }
+                concatFile?.let { if (it.exists()) it.delete() }
+                viewModel.exportError("Export cancelled")
+                Toast.makeText(this@VideoEditingActivity, "Export cancelled", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
+                tempOutputFile?.let { if (it.exists()) it.delete() }
+                concatFile?.let { if (it.exists()) it.delete() }
                 viewModel.exportError(e.message ?: "Unknown error")
                 Log.e(TAG, "Export exception: ${e.message}", e)
             }
@@ -2698,26 +2710,85 @@ class VideoEditingActivity : AppCompatActivity() {
     }
 
     private fun exportVideoFile(uri: Uri) {
-        lifecycleScope.launch {
+        exportJob = lifecycleScope.launch {
+            var outputFile: File? = null
             try {
                 viewModel.startExport()
-
-                val outputDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                if (!outputDir.exists()) outputDir.mkdirs()
-
-                val outputFile = File(outputDir, "video_${System.currentTimeMillis()}.mp4")
-                File(tempInputFile.absolutePath).copyTo(outputFile, overwrite = true)
-
-                viewModel.finishExport()
-                Toast.makeText(
-                    this@VideoEditingActivity,
-                    "Video exported: ${outputFile.absolutePath}",
-                    Toast.LENGTH_LONG
-                ).show()
+                
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val outputDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    if (!outputDir.exists()) outputDir.mkdirs()
+    
+                    val file = File(outputDir, "video_${System.currentTimeMillis()}.mp4")
+                    outputFile = file
+                    val sourceFile = File(tempInputFile.absolutePath)
+                    
+                    val input = java.io.FileInputStream(sourceFile)
+                    val output = java.io.FileOutputStream(file)
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    var totalBytesRead = 0L
+                    val totalSize = sourceFile.length()
+                    
+                    var lastProgressUpdate = System.currentTimeMillis()
+    
+                    input.use { i ->
+                        output.use { o ->
+                            while (i.read(buffer).also { bytesRead = it } >= 0) {
+                                if (!isActive) {
+                                    throw kotlinx.coroutines.CancellationException("Export cancelled")
+                                }
+                                o.write(buffer, 0, bytesRead)
+                                totalBytesRead += bytesRead
+                                
+                                val now = System.currentTimeMillis()
+                                if (now - lastProgressUpdate > 100) { // Update UI at most every 100ms
+                                    val progress = ((totalBytesRead.toFloat() / totalSize) * 100).toInt()
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        viewModel.updateExportProgress(progress)
+                                    }
+                                    lastProgressUpdate = now
+                                }
+                            }
+                        }
+                    }
+                    
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        viewModel.updateExportProgress(100)
+                        viewModel.finishExport()
+                        Toast.makeText(
+                            this@VideoEditingActivity,
+                            "Video exported: ${file.absolutePath}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                outputFile?.let { if (it.exists()) it.delete() }
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    viewModel.exportError("Export cancelled")
+                    Toast.makeText(this@VideoEditingActivity, "Export cancelled", Toast.LENGTH_SHORT).show()
+                }
             } catch (e: Exception) {
-                viewModel.exportError(e.message ?: "Export failed")
+                outputFile?.let { if (it.exists()) it.delete() }
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    viewModel.exportError(e.message ?: "Export failed")
+                }
             }
         }
+    }
+
+    private fun cancelExport() {
+        lifecycleScope.launch {
+            try {
+                ffmpegEngine.cancelAllSessions()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error cancelling FFmpeg sessions: ${e.message}")
+            }
+        }
+        exportJob?.cancel()
+        viewModel.exportError("Export cancelled")
+        Toast.makeText(this, "Export cancelled", Toast.LENGTH_SHORT).show()
     }
 
     private fun setupExoPlayer() {
