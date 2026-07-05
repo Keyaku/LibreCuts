@@ -434,6 +434,61 @@ class VideoEditingViewModel : ViewModel() {
 
 
 
+    fun toggleMuteClip(index: Int) {
+        viewModelScope.launch {
+            _project.update { current ->
+                if (current == null) return@update null
+                val ops = current.operations.toMutableList()
+                val existingIdx = ops.indexOfFirst { it is EditOperation.MuteClip && it.index == index }
+                if (existingIdx != -1) {
+                    val currentMute = ops[existingIdx] as EditOperation.MuteClip
+                    ops[existingIdx] = currentMute.copy(isMuted = !currentMute.isMuted)
+                } else {
+                    ops.add(EditOperation.MuteClip(index, true))
+                }
+                _undoStack.value = _undoStack.value + current
+                _redoStack.value = emptyList()
+                current.copy(operations = ops)
+            }
+            updateUiState { state ->
+                state.copy(
+                    pendingOperationCount = _project.value?.getOperationCount() ?: 0,
+                    canUndo = _undoStack.value.isNotEmpty(),
+                    canRedo = false
+                )
+            }
+        }
+    }
+
+    fun setColorFilter(index: Int, filterName: String) {
+        viewModelScope.launch {
+            _project.update { current ->
+                if (current == null) return@update null
+                val ops = current.operations.toMutableList()
+                val existingIdx = ops.indexOfFirst { it is EditOperation.ColorFilter && it.index == index }
+                if (existingIdx != -1) {
+                    if (filterName == "none") {
+                        ops.removeAt(existingIdx)
+                    } else {
+                        ops[existingIdx] = (ops[existingIdx] as EditOperation.ColorFilter).copy(filterName = filterName)
+                    }
+                } else if (filterName != "none") {
+                    ops.add(EditOperation.ColorFilter(index, filterName))
+                }
+                _undoStack.value = _undoStack.value + current
+                _redoStack.value = emptyList()
+                current.copy(operations = ops)
+            }
+            updateUiState { state ->
+                state.copy(
+                    pendingOperationCount = _project.value?.getOperationCount() ?: 0,
+                    canUndo = _undoStack.value.isNotEmpty(),
+                    canRedo = false
+                )
+            }
+        }
+    }
+
     fun addMuteAudioOperation() {
         addOperation(EditOperation.MuteAudio())
     }
@@ -680,6 +735,8 @@ class VideoEditingViewModel : ViewModel() {
                             is EditOperation.SpeedMain -> op.id == operationId
                             is EditOperation.ReverseMain -> op.id == operationId
                             is EditOperation.AddSubtitles -> op.id == operationId
+                            is EditOperation.MuteClip -> op.id == operationId
+                            is EditOperation.ColorFilter -> op.id == operationId
                         }
                     }
                     it.copy(operations = newOps)
@@ -767,6 +824,20 @@ class VideoEditingViewModel : ViewModel() {
             ":enable='between(t,$startSec,$endSec)'"
         } else {
             ":enable='gte(t,$startSec)'"
+        }
+    }
+
+    private fun getFFmpegFilterForName(name: String): String? {
+        return when (name.lowercase()) {
+            "vintage" -> "curves=preset=vintage"
+            "warm" -> "colorchannelmixer=1.1:0:0:0:0:1.0:0:0:0:0:0.9"
+            "cool" -> "colorchannelmixer=0.9:0:0:0:0:1.0:0:0:0:0:1.1"
+            "contrast" -> "curves=preset=strong_contrast"
+            "monochrome" -> "hue=s=0"
+            "vignette" -> "vignette"
+            "negative" -> "curves=preset=negative"
+            "crossprocess" -> "curves=preset=cross_process"
+            else -> null
         }
     }
 
@@ -1109,8 +1180,13 @@ class VideoEditingViewModel : ViewModel() {
             val normTarget = "setpts=PTS-STARTPTS,scale=$mainWidth:$mainHeight:force_original_aspect_ratio=decrease,pad=$mainWidth:$mainHeight:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p"
 
             for (i in 0 until inputCount) {
-                filterParts.add("[$i:v]${normTarget}[norm$i]")
-                if (hasAudioArray[i]) {
+                val colorFilterOp = operations.filterIsInstance<EditOperation.ColorFilter>().find { it.index == i }
+                val lutFilterExpr = colorFilterOp?.let { getFFmpegFilterForName(it.filterName) }
+                val normTargetWithLut = if (lutFilterExpr != null) "$normTarget,$lutFilterExpr" else normTarget
+                filterParts.add("[$i:v]${normTargetWithLut}[norm$i]")
+
+                val isClipMuted = operations.filterIsInstance<EditOperation.MuteClip>().find { it.index == i }?.isMuted ?: false
+                if (hasAudioArray[i] && !isClipMuted) {
                     filterParts.add("[$i:a]asetpts=PTS-STARTPTS,aformat=sample_rates=44100:channel_layouts=stereo[anorm$i]")
                 } else {
                     val d = durationsArray[i]
@@ -1328,12 +1404,22 @@ class VideoEditingViewModel : ViewModel() {
 
         // ── NON-MERGE PATH ────────────────────────────────────────────────────
         val filterComplexParts = mutableListOf<String>()
+        var currentInputVideoLabel = "[0:v]"
+
+        val colorFilterOp = operations.filterIsInstance<EditOperation.ColorFilter>().find { it.index == 0 }
+        if (colorFilterOp != null) {
+            val lutFilterExpr = getFFmpegFilterForName(colorFilterOp.filterName)
+            if (lutFilterExpr != null) {
+                filterComplexParts.add("[0:v]${lutFilterExpr}[cfv]")
+                currentInputVideoLabel = "[cfv]"
+            }
+        }
 
         // ── Video filter stages (crop, text, image overlays) ──
         val (videoStages, finalVideoLabel) = buildVideoFilterStages(
             operations = videoOps,
             fontFilePath = fontFilePath,
-            inputLabel = "[0:v]",
+            inputLabel = currentInputVideoLabel,
             imageInputIndices = imageInputIndices,
             density = density
         )
@@ -1341,7 +1427,10 @@ class VideoEditingViewModel : ViewModel() {
 
         // ── Audio filter stages (multi-track adelay + volume mixing) ──
         var finalAudioLabel: String? = null
-        if (audioMuted) {
+        val mainVideoMuted = operations.filterIsInstance<EditOperation.MuteClip>().find { it.index == 0 }?.isMuted ?: false
+        val effectiveAudioMuted = audioMuted || (mainVideoMuted && audioInputIndices.isEmpty())
+
+        if (effectiveAudioMuted) {
             // No audio output — will use -an flag
         } else if (audioInputIndices.isNotEmpty()) {
             val mixInputLabels = mutableListOf<String>()
@@ -1388,7 +1477,6 @@ class VideoEditingViewModel : ViewModel() {
             }
 
             // Mix original audio with all background tracks
-            val mainVideoMuted = false
             if (hasAudio && !mainVideoMuted && !audioInputIndices.any { it.second.removeOriginalAudio }) {
                 val allInputs = "[0:a]" + mixInputLabels.joinToString("")
                 val totalInputs = 1 + mixInputLabels.size
@@ -1408,7 +1496,7 @@ class VideoEditingViewModel : ViewModel() {
         }
 
         // ── Assemble the command ──
-        val hasVideoFilters = videoStages.isNotEmpty()
+        val hasVideoFilters = videoStages.isNotEmpty() || colorFilterOp != null
         val hasAudioFilters = finalAudioLabel != null
 
         if (hasVideoFilters || hasAudioFilters) {
@@ -1426,20 +1514,20 @@ class VideoEditingViewModel : ViewModel() {
                 cmd.append(" -map 0:v")
             }
 
-            if (audioMuted) {
+            if (effectiveAudioMuted) {
                 cmd.append(" -an")
             } else if (hasAudioFilters) {
                 cmd.append(" -map \"$finalAudioLabel\"")
             } else {
                 cmd.append(" -map 0:a?")
             }
-        } else if (audioMuted) {
+        } else if (effectiveAudioMuted) {
             cmd.append(" -an")
         }
 
         // Codecs
         cmd.append(" -c:v h264_mediacodec -b:v ${_exportQuality.value.bitrate}")
-        if (!audioMuted) {
+        if (!effectiveAudioMuted) {
             cmd.append(" -c:a aac")
         }
 

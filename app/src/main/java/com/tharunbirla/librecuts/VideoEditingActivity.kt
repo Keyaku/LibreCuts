@@ -735,6 +735,18 @@ class VideoEditingActivity : AppCompatActivity() {
                         }
                     }
                 }
+                toolbar.findViewById<ImageButton>(R.id.btnVideoMute)?.setBounceClickListener {
+                    selectedVideoIndex?.let { index ->
+                        viewModel.toggleMuteClip(index)
+                        viewModel.project.value?.let { renderTracks(it) }
+                        updateVideoMuteButtonState(toolbar, index)
+                    }
+                }
+                toolbar.findViewById<ImageButton>(R.id.btnVideoFilter)?.setBounceClickListener {
+                    selectedVideoIndex?.let { index ->
+                        showColorFilterSelectionDialog(index)
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Video editing toolbar not found: ${e.message}")
@@ -1787,6 +1799,11 @@ class VideoEditingActivity : AppCompatActivity() {
         videoEditingToolbar?.visibility = View.VISIBLE
         editingControlsWrapper.visibility = View.GONE
         videoEditingToolbar?.findViewById<View>(R.id.btnVideoDeleteContainer)?.visibility = if (selectedVideoIndex != null && selectedVideoIndex!! > 0) View.VISIBLE else View.GONE
+        selectedVideoIndex?.let { index ->
+            videoEditingToolbar?.let { toolbar ->
+                updateVideoMuteButtonState(toolbar, index)
+            }
+        }
         if (::player.isInitialized && player.isPlaying) {
             player.pause()
         }
@@ -3158,6 +3175,78 @@ class VideoEditingActivity : AppCompatActivity() {
         return getSequenceItems().sumOf { it.trimmedDurationMs }
     }
 
+    private var lastAppliedFilterName: String? = null
+
+    private fun applyColorFilterToPlayer(filterName: String) {
+        if (lastAppliedFilterName == filterName) return
+        lastAppliedFilterName = filterName
+
+        if (filterName == "none") {
+            playerView.setLayerType(View.LAYER_TYPE_NONE, null)
+            return
+        }
+
+        val matrix = when (filterName.lowercase()) {
+            "vintage" -> floatArrayOf(
+                0.393f, 0.769f, 0.189f, 0f, 0f,
+                0.349f, 0.686f, 0.168f, 0f, 0f,
+                0.272f, 0.534f, 0.131f, 0f, 0f,
+                0f,     0f,     0f,     1f, 0f
+            )
+            "warm" -> floatArrayOf(
+                1.1f, 0f, 0f, 0f, 10f,
+                0f, 1.0f, 0f, 0f, 5f,
+                0f, 0f, 0.9f, 0f, -10f,
+                0f, 0f, 0f, 1f, 0f
+            )
+            "cool" -> floatArrayOf(
+                0.9f, 0f, 0f, 0f, -10f,
+                0f, 1.0f, 0f, 0f, 0f,
+                0f, 0f, 1.2f, 0f, 15f,
+                0f, 0f, 0f, 1f, 0f
+            )
+            "contrast" -> floatArrayOf(
+                1.4f, 0f, 0f, 0f, -50f,
+                0f, 1.4f, 0f, 0f, -50f,
+                0f, 0f, 1.4f, 0f, -50f,
+                0f, 0f, 0f, 1f, 0f
+            )
+            "monochrome" -> floatArrayOf(
+                0.33f, 0.59f, 0.11f, 0f, 0f,
+                0.33f, 0.59f, 0.11f, 0f, 0f,
+                0.33f, 0.59f, 0.11f, 0f, 0f,
+                0f,    0f,    0f,    1f, 0f
+            )
+            "vignette" -> floatArrayOf(
+                0.8f, 0f, 0f, 0f, 0f,
+                0f, 0.8f, 0f, 0f, 0f,
+                0f, 0f, 0.8f, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f
+            )
+            "negative" -> floatArrayOf(
+                -1f, 0f, 0f, 0f, 255f,
+                0f, -1f, 0f, 0f, 255f,
+                0f, 0f, -1f, 0f, 255f,
+                0f, 0f, 0f, 1f, 0f
+            )
+            "crossprocess" -> floatArrayOf(
+                1.2f, 0f, 0f, 0f, 0f,
+                0f, 1.0f, 0f, 0f, 10f,
+                0f, 0f, 1.4f, 0f, -20f,
+                0f, 0f, 0f, 1f, 0f
+            )
+            else -> null
+        }
+
+        if (matrix != null) {
+            val paint = android.graphics.Paint()
+            paint.colorFilter = android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix(matrix))
+            playerView.setLayerType(View.LAYER_TYPE_HARDWARE, paint)
+        } else {
+            playerView.setLayerType(View.LAYER_TYPE_NONE, null)
+        }
+    }
+
     private fun syncUiWithPlayer() {
         val currentGlobalPos = getGlobalPosition()
         val totalDuration = getTotalSequenceDuration()
@@ -3174,6 +3263,23 @@ class VideoEditingActivity : AppCompatActivity() {
 
             textOverlayView?.currentPositionMs = currentGlobalPos
             imageOverlayView?.currentPositionMs = currentGlobalPos
+
+            // Apply color filter corresponding to the active clip
+            val sequenceItems = getSequenceItems()
+            var accumulatedStartMs = 0L
+            var activeClipIndex = 0
+            for ((index, item) in sequenceItems.withIndex()) {
+                val start = accumulatedStartMs
+                val end = accumulatedStartMs + item.trimmedDurationMs
+                if (currentGlobalPos >= start && currentGlobalPos <= end) {
+                    activeClipIndex = index
+                    break
+                }
+                accumulatedStartMs += item.trimmedDurationMs
+            }
+            val activeFilterName = viewModel.project.value?.operations?.filterIsInstance<com.tharunbirla.librecuts.models.EditOperation.ColorFilter>()
+                ?.find { it.index == activeClipIndex }?.filterName ?: "none"
+            applyColorFilterToPlayer(activeFilterName)
         }
     }
 
@@ -3480,7 +3586,17 @@ class VideoEditingActivity : AppCompatActivity() {
                         baseVideoSource, clipStartUs, clipEndUs, true, false, true
                     )
                     
-                    videoSourceForChunk = clippedSource
+                    val isClipMuted = viewModel.project.value?.operations?.filterIsInstance<com.tharunbirla.librecuts.models.EditOperation.MuteClip>()
+                        ?.find { it.index == index }?.isMuted ?: false
+
+                    videoSourceForChunk = if (isClipMuted) {
+                        com.google.android.exoplayer2.source.FilteringMediaSource(
+                            clippedSource,
+                            com.google.android.exoplayer2.C.TRACK_TYPE_VIDEO
+                        )
+                    } else {
+                        clippedSource
+                    }
                     break
                 }
                 vGlobalMs += item.trimmedDurationMs
@@ -4025,6 +4141,138 @@ class VideoEditingActivity : AppCompatActivity() {
 
         btnClose.setBounceClickListener {
             bottomSheet.dismiss()
+        }
+
+        bottomSheet.show()
+    }
+
+    private fun updateVideoMuteButtonState(toolbar: View, index: Int) {
+        val isMuted = viewModel.project.value?.operations?.filterIsInstance<com.tharunbirla.librecuts.models.EditOperation.MuteClip>()
+            ?.find { it.index == index }?.isMuted ?: false
+        
+        val btnMute = toolbar.findViewById<ImageButton>(R.id.btnVideoMute)
+        val tvMuteLabel = toolbar.findViewById<TextView>(R.id.tvVideoMuteLabel)
+        
+        if (isMuted) {
+            btnMute?.setImageResource(R.drawable.ic_volume_off_24)
+            tvMuteLabel?.text = "Unmute"
+        } else {
+            btnMute?.setImageResource(R.drawable.ic_volume_up_24)
+            tvMuteLabel?.text = "Mute"
+        }
+    }
+
+    private fun showColorFilterSelectionDialog(clipIndex: Int) {
+        val bottomSheet = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.dialog_color_filters, null)
+        bottomSheet.setContentView(view)
+
+        val filtersList = view.findViewById<LinearLayout>(R.id.colorFiltersList)
+        val project = viewModel.project.value ?: return
+        val existingOp = project.operations.filterIsInstance<com.tharunbirla.librecuts.models.EditOperation.ColorFilter>().find { it.index == clipIndex }
+        val activeFilterName = existingOp?.filterName ?: "none"
+
+        val filters = listOf(
+            Pair("none", "None"),
+            Pair("vintage", "Vintage"),
+            Pair("warm", "Warm"),
+            Pair("cool", "Cool"),
+            Pair("contrast", "Contrast"),
+            Pair("monochrome", "B&W"),
+            Pair("vignette", "Vignette"),
+            Pair("negative", "Negative"),
+            Pair("crossprocess", "Cross P")
+        )
+
+        for ((filterId, displayName) in filters) {
+            val itemView = layoutInflater.inflate(R.layout.item_color_filter_option, filtersList, false)
+            val tvName = itemView.findViewById<TextView>(R.id.filterName)
+            val tvShort = itemView.findViewById<TextView>(R.id.filterShortName)
+            val bg = itemView.findViewById<FrameLayout>(R.id.filterIconBg)
+            val previewColor = itemView.findViewById<View>(R.id.filterPreviewColor)
+
+            tvName.text = displayName
+            bg.clipToOutline = true
+
+            // Set preview color filter
+            previewColor.setBackgroundColor(android.graphics.Color.parseColor("#444444")) // base grey
+            // Apply the actual filter to the preview view to give the user a direct visual preview!
+            val matrix = when (filterId) {
+                "vintage" -> floatArrayOf(
+                    0.393f, 0.769f, 0.189f, 0f, 0f,
+                    0.349f, 0.686f, 0.168f, 0f, 0f,
+                    0.272f, 0.534f, 0.131f, 0f, 0f,
+                    0f,     0f,     0f,     1f, 0f
+                )
+                "warm" -> floatArrayOf(
+                    1.1f, 0f, 0f, 0f, 10f,
+                    0f, 1.0f, 0f, 0f, 5f,
+                    0f, 0f, 0.9f, 0f, -10f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+                "cool" -> floatArrayOf(
+                    0.9f, 0f, 0f, 0f, -10f,
+                    0f, 1.0f, 0f, 0f, 0f,
+                    0f, 0f, 1.2f, 0f, 15f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+                "contrast" -> floatArrayOf(
+                    1.4f, 0f, 0f, 0f, -50f,
+                    0f, 1.4f, 0f, 0f, -50f,
+                    0f, 0f, 1.4f, 0f, -50f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+                "monochrome" -> floatArrayOf(
+                    0.33f, 0.59f, 0.11f, 0f, 0f,
+                    0.33f, 0.59f, 0.11f, 0f, 0f,
+                    0.33f, 0.59f, 0.11f, 0f, 0f,
+                    0f,    0f,    0f,    1f, 0f
+                )
+                "vignette" -> floatArrayOf(
+                    0.8f, 0f, 0f, 0f, 0f,
+                    0f, 0.8f, 0f, 0f, 0f,
+                    0f, 0f, 0.8f, 0f, 0f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+                "negative" -> floatArrayOf(
+                    -1f, 0f, 0f, 0f, 255f,
+                    0f, -1f, 0f, 0f, 255f,
+                    0f, 0f, -1f, 0f, 255f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+                "crossprocess" -> floatArrayOf(
+                    1.2f, 0f, 0f, 0f, 0f,
+                    0f, 1.0f, 0f, 0f, 10f,
+                    0f, 0f, 1.4f, 0f, -20f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+                else -> null
+            }
+
+            if (matrix != null) {
+                val paint = android.graphics.Paint()
+                paint.colorFilter = android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix(matrix))
+                previewColor.setLayerType(View.LAYER_TYPE_HARDWARE, paint)
+                tvShort.text = filterId.take(2).uppercase()
+            } else {
+                previewColor.setLayerType(View.LAYER_TYPE_NONE, null)
+                previewColor.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                tvShort.text = "✖"
+            }
+
+            if (filterId == activeFilterName) {
+                bg.setBackgroundResource(R.drawable.bg_transition_border_selected)
+            } else {
+                bg.setBackgroundResource(R.drawable.bg_aspect_ratio_item)
+            }
+
+            itemView.setOnClickListener {
+                viewModel.setColorFilter(clipIndex, filterId)
+                applyColorFilterToPlayer(filterId)
+                bottomSheet.dismiss()
+            }
+            
+            filtersList.addView(itemView)
         }
 
         bottomSheet.show()

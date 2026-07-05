@@ -1,68 +1,73 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<HorizontalScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="16dp"
     android:layout_marginTop="16dp"
     android:layout_marginBottom="24dp"
-    android:orientation="horizontal"
-    android:gravity="center"
+    android:scrollbars="none"
     android:background="@drawable/bg_bottom_nav_floating"
-    android:paddingVertical="12dp"
-    android:paddingHorizontal="8dp"
     android:elevation="12dp">
 
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        android:gravity="center">
-        <ImageButton
-            android:id="@+id/btnVideoCancel"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/tool_button_inactive"
-            android:src="@drawable/ic_close_24"
-            app:tint="@color/toolTextInactive" />
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Cancel"
-            android:textSize="11sp"
-            android:fontFamily="sans-serif-medium"
-            android:textColor="@color/toolTextInactive"/>
-    </LinearLayout>
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingVertical="12dp"
+        android:paddingHorizontal="8dp">
 
-    <LinearLayout
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        android:gravity="center">
-        <ImageButton
-            android:id="@+id/btnVideoTrim"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/tool_button_inactive"
-            android:src="@drawable/ic_trim_24"
-            app:tint="@color/toolTextInactive" />
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Trim"
-            android:textSize="11sp"
-            android:fontFamily="sans-serif-medium"
-            android:textColor="@color/toolTextInactive"/>
-    </LinearLayout>
-
+        <!-- Cancel -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="72dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
+            <ImageButton
+                android:id="@+id/btnVideoCancel"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_close_24"
+                app:tint="@color/toolTextInactive" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Cancel"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/toolTextInactive"/>
+        </LinearLayout>
+
+        <!-- Trim -->
+        <LinearLayout
+            android:layout_width="72dp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center">
+            <ImageButton
+                android:id="@+id/btnVideoTrim"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_trim_24"
+                app:tint="@color/toolTextInactive" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Trim"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/toolTextInactive"/>
+        </LinearLayout>
+
+        <!-- Split -->
+        <LinearLayout
+            android:layout_width="72dp"
+            android:layout_height="wrap_content"
             android:orientation="vertical"
             android:gravity="center">
             <ImageButton
@@ -82,13 +87,62 @@
                 android:textColor="@color/toolTextInactive"/>
         </LinearLayout>
 
+        <!-- Mute Clip -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:id="@+id/btnVideoMuteContainer"
+            android:layout_width="72dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:orientation="vertical"
-            android:gravity="center"
-            android:id="@+id/btnVideoSpeedContainer">
+            android:gravity="center">
+            <ImageButton
+                android:id="@+id/btnVideoMute"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_volume_up_24"
+                app:tint="@color/toolTextInactive" />
+            <TextView
+                android:id="@+id/tvVideoMuteLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Mute"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/toolTextInactive"/>
+        </LinearLayout>
+
+        <!-- Color Filters / LUTs -->
+        <LinearLayout
+            android:id="@+id/btnVideoFilterContainer"
+            android:layout_width="72dp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center">
+            <ImageButton
+                android:id="@+id/btnVideoFilter"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_palette_24"
+                app:tint="@color/toolTextInactive" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Filters"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/toolTextInactive"/>
+        </LinearLayout>
+
+        <!-- Speed -->
+        <LinearLayout
+            android:id="@+id/btnVideoSpeedContainer"
+            android:layout_width="72dp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center">
             <ImageButton
                 android:id="@+id/btnVideoSpeed"
                 android:layout_width="48dp"
@@ -106,13 +160,13 @@
                 android:textColor="@color/toolTextInactive"/>
         </LinearLayout>
 
+        <!-- Extract Audio -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:id="@+id/btnVideoExtractAudioContainer"
+            android:layout_width="72dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:orientation="vertical"
-            android:gravity="center"
-            android:id="@+id/btnVideoExtractAudioContainer">
+            android:gravity="center">
             <ImageButton
                 android:id="@+id/btnVideoExtractAudio"
                 android:layout_width="48dp"
@@ -130,13 +184,13 @@
                 android:textColor="@color/toolTextInactive"/>
         </LinearLayout>
 
+        <!-- Freeze Frame -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:id="@+id/btnVideoFreezeFrameContainer"
+            android:layout_width="72dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:orientation="vertical"
-            android:gravity="center"
-            android:id="@+id/btnVideoFreezeFrameContainer">
+            android:gravity="center">
             <ImageButton
                 android:id="@+id/btnVideoFreezeFrame"
                 android:layout_width="48dp"
@@ -154,13 +208,13 @@
                 android:textColor="@color/toolTextInactive"/>
         </LinearLayout>
 
+        <!-- Reverse -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:id="@+id/btnVideoReverseContainer"
+            android:layout_width="72dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:orientation="vertical"
-            android:gravity="center"
-            android:id="@+id/btnVideoReverseContainer">
+            android:gravity="center">
             <ImageButton
                 android:id="@+id/btnVideoReverse"
                 android:layout_width="48dp"
@@ -178,13 +232,13 @@
                 android:textColor="@color/toolTextInactive"/>
         </LinearLayout>
 
+        <!-- Delete -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:id="@+id/btnVideoDeleteContainer"
+            android:layout_width="72dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:orientation="vertical"
-            android:gravity="center"
-            android:id="@+id/btnVideoDeleteContainer">
+            android:gravity="center">
             <ImageButton
                 android:id="@+id/btnVideoDelete"
                 android:layout_width="48dp"
@@ -202,4 +256,5 @@
                 android:textColor="@color/colorPrimary"/>
         </LinearLayout>
 
-</LinearLayout>
+    </LinearLayout>
+</HorizontalScrollView>

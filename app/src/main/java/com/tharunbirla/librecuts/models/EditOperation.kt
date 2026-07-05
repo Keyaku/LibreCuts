@@ -138,6 +138,25 @@ sealed class EditOperation : Serializable {
         val durationMs: Long = 1000L,
         val id: String = System.nanoTime().toString()
     ) : EditOperation()
+
+    /**
+     * Mute clip operation: Mutes/unmutes a specific clip index.
+     */
+    data class MuteClip(
+        val index: Int,
+        val isMuted: Boolean,
+        val id: String = System.nanoTime().toString()
+    ) : EditOperation()
+
+    /**
+     * Color filter (LUT) operation: Applies a preset color grade filter to a specific clip index.
+     */
+    data class ColorFilter(
+        val index: Int,
+        val filterName: String,
+        val id: String = System.nanoTime().toString()
+    ) : EditOperation()
+
     
     /**
      * Add background audio operation: Overlays an audio file over the video.
